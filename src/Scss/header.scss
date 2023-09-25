@@ -1,0 +1,89 @@
+// .date-select{
+//     margin: 15px
+// }
+
+// .modalfieldname{
+//     width: 115px;
+//     margin: 5px;
+//     font-size:16px
+// }
+
+.semiTitle{
+        // background-color: #756666;
+        background-color: #f34079;
+        text-align: center;
+        color: white;
+        margin: 15px 0px;
+        height: 50px;
+        padding: 10px;
+}
+
+.funcbtn{
+        margin: 10px;
+        width:125px
+}
+
+.processButton{
+        margin: 2px;
+        width: 80px;
+        color: white;
+        background-image: linear-gradient(135deg, #f34079 40%, #fc894d);
+        // border: none;
+        border-radius: 5px;
+        font-weight: bold;
+        color: white;
+        cursor: pointer;
+}
+        
+.ant-btn {
+         border : 1px solid rgb(37, 36, 36)
+}
+.ant-btn[disabled] {
+        color: #f34079
+        
+}
+
+.login-input { 
+        width: 100%;
+        height: 5vh;
+        color: black;
+        background-color: #f2e2e2;
+        font-weight: bold;
+        font-size: large;
+}
+
+.ant-picker {
+        border: 1px solid #878787;
+        margin: 8px;
+
+}
+
+.ant-select {
+        border: 1px solid #878787;
+}
+
+.ant-input-number {
+        border: 1px solid #878787;
+}
+
+.ant-input {
+        border: 1px solid #878787;
+}
+
+.add-type-hide {
+        position: absolute;
+        z-index: -1;
+}
+.add-type-show {
+        position: relative;
+        z-index: 2;  
+}
+
+.w-100-m-3 { 
+        width: 100%;
+        margin : 3px
+}
+
+.color-red { 
+color: red;
+}

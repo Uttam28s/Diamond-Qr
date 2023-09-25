@@ -1,0 +1,161 @@
+@import url(./righbar.scss);
+@import url(./leftbar.scss);
+@import url(./variable.scss);
+@import url(./header.scss);
+
+body {
+  background-color: #f2e2e2;
+  font-family: monospace;
+  font-weight: 600;
+  font-size: 1.3em;
+}
+.MuiPaper-root {
+  border-radius: 10px !important;
+}
+
+.main-screen-wrapper {
+  display: flex;
+  justify-content: space-between;
+  // padding: 2%;
+}
+
+.seprater {
+  text-align: center;
+  padding: 1%;
+}
+
+.title {
+  font-size: 1.5em;
+  width: -moz-fit-content;
+  width: fit-content;
+  padding: 1%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.sep {
+  border-bottom: solid 1.5px;
+  margin: 1%;
+}
+
+.bottam-wraaper {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.input-box {
+  height: 55px;
+  border-radius: 10px;
+  width: 95%;
+  margin: auto;
+  margin-bottom: 2%;
+  border: 0px;
+  outline: none;
+  font-size: 12px !important;
+  font-weight: 600;
+}
+
+.button-wrapper {
+  gap: 15px;
+  width: auto;
+  .MuiButton-root {
+    border-radius: 10px;
+    //padding: 15px;
+  }
+}
+
+.card-wrapper {
+  background-color: white;
+  border-radius: 10px;
+}
+.align-end {
+  text-align: end;
+}
+
+.align-center {
+  text-align: center;
+}
+
+.content-tippy {
+  padding: 2%;
+  color: #91242a;
+  line-height: 1.8;
+  margin: 4%;
+}
+
+.button-box {
+  display: flex;
+  padding: 2%;
+  gap: 10%;
+  margin: 4%;
+  justify-content: center;
+
+  span {
+    border-radius: 30px;
+    padding: 3%;
+    /* width: 12%; */
+    cursor: pointer;
+    opacity: 0.8;
+
+    :hover {
+      opacity: 1;
+    }
+  }
+}
+
+.MuiSvgIcon-root {
+  width: 1.2em !important;
+  height: 1.2em !important;
+}
+
+.blur-back {
+  background: #0000005e !important;
+}
+
+::-webkit-scrollbar-track {
+  background: #4d4d4d;
+  width: 35px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #00000063;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar {
+  border-radius: 20px;
+  width: 9px;
+  /* background: #ca090900; */
+}
+
+.table-container {
+  max-height: 80vh; /* Set a max height to enable scrolling */
+  overflow: auto; /* Enable scrolling for the container */
+}
+
+table {
+  width: 100%;
+  table-layout: fixed; /* Fix table layout to ensure consistent column widths */
+  border-collapse: collapse;
+}
+
+thead th,
+tfoot th {
+  background-color: #f2f2f2;
+  position: sticky;
+  top: -1.5rem;
+  height: 5vh;
+}
+
+tfoot th {
+  bottom: -1.5rem;
+}
+
+table td,
+th {
+  border: 1px solid #000;
+  padding: 8px;
+  text-align: center;
+}

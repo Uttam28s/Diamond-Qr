@@ -1,0 +1,25 @@
+.left-bar-wrapper {
+    width: 25%;
+    border-right: solid 2px;
+}
+
+.qrcode-vid-wrapper{
+    display: none;
+    width: 40%;
+   // border: solid 1.5px;
+    margin: 10%  auto;
+    border-radius: 20px;
+  //  height: 50vh;
+
+}
+.code-box{
+     /* padding: 1%; */
+     width: 90%;
+   //  border: solid 1.5px;
+     /* border-radius: 10px; */
+     margin: 0 auto;
+    //  margin: 2% auto;
+     .MuiCardContent-root {
+      background-color: #4d4d4d;
+     }
+}

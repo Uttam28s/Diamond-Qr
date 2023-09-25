@@ -1,0 +1,105 @@
+.m-2{
+margin: 2%;
+}
+.p-2{
+    padding: 2%;
+}
+
+.bk-green{
+    background-color: #2e7d32 !important;
+}
+.bk-red{
+    background-color: #d32f2f !important;
+}
+.bk-grey{
+    background-color:#4d4d4d !important;
+    color: whitesmoke !important;
+}
+.bk-white{
+    background-color: whitesmoke;
+}
+.bk-dull{
+  opacity: 0.5;
+}
+
+.fnt-white{
+color: #d8d8d8
+}
+
+.font-medium{
+    font-size: 1.1vw !important;
+    margin: 0%;
+    align-items: center;
+    display: flex;
+    justify-content: center;
+}
+
+.flex-column{
+    display: flex;
+    flex-direction: column  ;
+}
+.p-0{
+    padding: 0% !important;
+}
+.p-1{
+    padding: 1% !important;
+}
+
+
+.w-100{
+    width: 100% !important;
+    font-size: 1vw !important;
+}
+.m-1{
+    margin: 1% !important;
+}
+.w-29{
+    width: 29%;
+}
+
+.d-flex{
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction:row;
+}
+.scroll-card{
+    height: 120px;
+    overflow-y: auto;
+}
+
+.main-card-scroll{
+height:60vh;
+overflow-y: auto ;
+    align-content: flex-start;
+div{
+    margin: 0% !important;
+}
+}
+.hover-icon{
+    display: block;
+   // padding: 1%;
+    &:hover{
+        background-color: #00000054;
+        box-shadow:#00000054 0px 2px 1px -1px;
+        border-radius: 32%;
+        cursor: pointer;
+
+    }
+    cursor: pointer;
+}
+
+
+
+.absolute{
+    position: absolute;
+}
+.relative{
+    position: relative;
+}
+.hide{
+    display: none;
+}
+.flex{
+    display: flex;
+}
+

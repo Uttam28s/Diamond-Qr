@@ -2,6 +2,7 @@
 @import url(./leftbar.scss);
 @import url(./variable.scss);
 @import url(./header.scss);
+@import url(./weightsortbar.scss);
 
 body {
   background-color: #f2e2e2;
@@ -66,7 +67,8 @@ body {
 }
 
 .card-wrapper {
-  background-color: white;
+  // background-color: white;
+  background-color: #757575cc !important ;
   border-radius: 10px;
 }
 .align-end {

@@ -77,7 +77,7 @@ class TripleToggleSwitch extends React.Component {
   };
 
   render() {
-    const { labels } = this.props;
+    // const { labels } = this.props;
 
     return (
       <div className="main-container">

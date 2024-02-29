@@ -1,0 +1,268 @@
+.right-bar-wrapper {
+    width: 80%;
+    overflow-y: overlay;
+    height: 94vh; 
+    padding-top: 0px !important;
+}
+
+.main-right-wrapper{
+    margin: 0%;
+    flex: 1;
+}
+
+.input-box-mui {
+    width: 40%;
+    text-align: start;
+    height: 100%;
+ //   padding: 15px;
+ //   border: solid 1.5px grey !important;
+   .font-medium
+   {
+       justify-content: start;
+       font-size: 0.96vw;
+   }
+    .MuiInput-underline {
+        border-bottom: 0px !important;
+       
+    }
+    .MuiFormControl-root{
+        justify-content: start;
+        margin: 0;
+        width: 100%;
+    }
+    .MuiCardContent-root{
+        display: flex;
+        gap: 20px;
+        flex-direction: column;
+    }
+}
+
+.form-wrapper {
+     margin-inline: 2%;
+    margin-left: 2%;
+    margin-right: 1%;
+    align-items: center;
+    // gap:3%;
+    display: flex;
+    justify-content: space-between;
+    .MuiFormControl-root{
+        border: solid 1.5px;
+        border-radius: 15px;
+        background: #ffffff;
+    }
+    input{
+        padding-inline: 2%;
+    }
+}
+
+.edit-row{
+
+}
+
+.button-div {
+   // display: flex;
+   justify-content: center;
+   gap: 5%;
+    .button-form {
+        //width: 15%;
+    }
+}
+.MuiInput-root::after{
+    border-bottom:  none !important;
+}
+
+.MuiInputBase-root::before{
+    content: none !important;
+}
+
+.categories-wrapper{
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-evenly;
+    width: 100%;
+
+}
+.font-row{
+    font-size: 0.8vw !important;
+}
+.single-cate-wrapper{
+  //  border: solid 1.5px gray;
+    width: 31%;
+    margin: 5px;
+   background-color: #ffffff !important;
+   height: fit-content;
+   position: relative;
+   border-radius: 10px !important;
+
+   div{
+    border-radius: 10px !important;
+   }
+}
+
+.list-card-wrapper{
+    width: 100% !important;
+    height: 40vh !important;
+   overflow-y: scroll !important;
+}
+
+.coderange-title{
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    .MuiPaper-root {
+    border-radius: 15px !important;
+    }
+}
+
+.error-input{
+    margin-bottom: 2%;
+    text-align: start;
+    margin-inline: 4%;
+    color: #ffbbbb;
+    margin-top: -2%;
+    font-size: 0.8vw;
+}
+
+#font-input{
+    font-size: 1.2vw;
+    font-weight: 600;
+    width: 100%;
+    border: solid 2px #000000;
+    border-radius: 10px;
+    padding: 2%;
+    background: azure;
+    color: black;
+
+}
+
+.edit-row{
+    width: 100%;
+    
+    .MuiButton-root{
+            padding: 4px;
+            width: 20%;
+            border-radius: 15px;
+         }
+        .MuiInput-root{
+            width: 35%;
+        }
+       p{
+           display: flex;
+           flex-direction: row;
+           justify-content: space-between;
+           margin-block: 1%;
+       }
+}
+
+.flex-row{
+    display: flex;
+    flex-direction: row;
+}
+
+.total-wrap{
+    font-size: 13px;
+
+
+    display: flex;
+    justify-content: space-between;
+    padding: 1%;
+    background: #000000;
+    /* padding: 1%; */
+    padding-inline: 3%;
+    color: whitesmoke;
+    /* border-radius: 30px;
+
+
+}
+
+.total-span-wrapper{
+    // display: flex;
+    // /* gap: 31%; */
+    // justify-content: space-between;
+}
+
+.span-wrap{
+    display: flex;
+    align-items: center;
+}
+
+.w-10{
+    width: 10%;
+}
+
+.true-false-button{
+    align-items: center;
+    gap: 10px;
+}
+
+.popup-tooltip{
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    left: 50%;
+    border-radius: 30px;
+    width: 210px;
+
+ 
+    animation: scale-display 0.4s;
+
+
+    @keyframes scale-display {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+}
+
+
+.top-bar-header{
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+
+.animation-class{
+    animation: highlight1 500ms ease-out;
+    animation-fill-mode: forwards;
+
+
+
+}
+
+@keyframes highlight1 {
+    0% {
+         box-shadow: none;
+      //   filter: drop-shadow(0px 0px 0px black);
+    }
+    100% {
+       box-shadow:  0px 0px 5px 10px #e00000;
+      //  filter: drop-shadow(0px 1px 3px black);
+    }
+  }
+
+  .anti-animation-class{
+    animation: highlightanti 500ms ease-in;
+        animation-fill-mode: forwards;
+
+
+
+}
+
+@keyframes highlightanti {
+    0% {
+        box-shadow:  0px 0px 5px 10px #e00000
+
+      //  filter: drop-shadow(0px 1px 3px black);
+    }
+    100% {
+        box-shadow: none;
+        //filter: none
+
+    }
+  }

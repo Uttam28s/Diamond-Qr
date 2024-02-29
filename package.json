@@ -1,7 +1,7 @@
 {
-  "name": "qr-code-raj",
+  "name": "qr-code-hitesh",
   "homepage": "./",
-  "version": "2.0.3",
+  "version": "2.0.5",
   "private": true,
   "scripts": {
     "start": "set PORT=3001 && react-scripts start",

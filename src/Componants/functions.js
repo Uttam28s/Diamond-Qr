@@ -21,6 +21,7 @@ export const randomcolor = () => {
       if (isNaN(d)) {
         flag = false;
       }
+      return ''
     });
     return flag;
   };
@@ -34,4 +35,9 @@ export const randomcolor = () => {
   export const  lastOneNumber = (data)=>{
     
     return  (data).toString().split(",").slice(-1).map(Number)[0]
+} 
+
+export const  fifthNumber = (data)=>{
+    
+  return  (data).toString().split(",").slice(-5,-4).map(Number)[0]
 } 

@@ -35,21 +35,29 @@ const LeftBar = (props) => {
 
     //  let ary = props.data; 
     //  currentCode &&  ary.push(currentCode)
-    currentCode && props.setData(currentCode)
+    currentCode && props.setdata(currentCode)
   }
 
   const handleClearData = () => {
     setCurrentCode("");
     setPreviousCode("");
-    window.localStorage.removeItem("category");
-    window.localStorage.removeItem("total");
-    props.clear();
+    // window.localStorage.removeItem("category");
+    // window.localStorage.removeItem("total");
+    // props.clear();
+    // setsumOfCode("");
+    let Cate = JSON.parse(localStorage.getItem("category"));
+    // Cate.map((d, i) => {
+    //   Cate[i].list = []
+    // })
+    window.localStorage.setItem('category', JSON.stringify(Cate))
+    window.localStorage.setItem("uncate", JSON.stringify([]));
+    window.localStorage.setItem("allcode", []);
     focusInput();
   };
 
   const handleKeyDown = (event) => {
     if (event.key === "Enter") {
-      focusAndSum(event.target.value);
+      focusAndSum();
     }
   };
 

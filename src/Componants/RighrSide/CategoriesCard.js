@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from "react";
 import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
-import editIcon from "../../assets/img/edit.svg";
-import { width } from "@mui/system";
+// import CardContent from "@mui/material/CardContent";
+// import editIcon from "../../assets/img/edit.svg";
+// import { width } from "@mui/system";
 import Input from "@mui/material/Input";
-import { StarTwoTone } from "@mui/icons-material";
+// import { StarTwoTone } from "@mui/icons-material";
 import ModeEditTwoToneIcon from "@mui/icons-material/ModeEditTwoTone";
-import { Button } from "@mui/material";
+// import { Button } from "@mui/material";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
 import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
-import { Tooltip } from "react-tippy";
+// import { Tooltip } from "react-tippy";
 import "react-tippy/dist/tippy.css";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CancelIcon from "@mui/icons-material/Cancel";
+// import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+// import CancelIcon from "@mui/icons-material/Cancel";
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 
 const   CategoriesCard = ({
@@ -43,6 +43,7 @@ const   CategoriesCard = ({
   useEffect(() => {
       const updatedList = setunCate(list,startRange,endRange)
     setRenderList(updatedList);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startRange, endRange,list?.length,togleBar]);
 
 
@@ -70,18 +71,18 @@ const   CategoriesCard = ({
                   className="p-2 m-2 bk-grey coderange-title"
                   style={{
                       width: `${
-                          togleBar == "center" && !edit ? "55%" : "100%"
+                          togleBar === "center" && !edit ? "55%" : "100%"
                       }`,
                   }}>
                   {!edit ? (
                       <>
                           <div className="font-medium">
-                              {startRange.toString() == "NaN"
+                              {startRange.toString() === "NaN"
                                   ? startRange
                                   : startRange.toString()}
                               <span className="bk-green"></span>-
                               <span className="bka-red">
-                                  {endRange.toString() == "NaN"
+                                  {endRange.toString() === "NaN"
                                       ? endRange
                                       : endRange.toString()}
                               </span>
@@ -136,10 +137,10 @@ const   CategoriesCard = ({
                       </div>
                   )}
               </Card>
-              {togleBar == "center" && !edit && (
+              {togleBar === "center" && !edit && (
                   <Card
                       className={`flex p-2 m-2 hover-icon bk-grey coderange-title ${
-                          openDelete == id && "bk-dull"
+                          openDelete === id && "bk-dull"
                       }`}
                       // style={
                       //   openDelete == id
@@ -155,10 +156,10 @@ const   CategoriesCard = ({
                       />
                   </Card>
               )}
-              {togleBar == "center" && !edit && (
+              {togleBar === "center" && !edit && (
                   <Card
                       className={`flex p-2 m-2 hover-icon  bk-grey coderange-title ${
-                          openDelete == id && "bk-dull"
+                          openDelete === id && "bk-dull"
                       }`}
                       onClick={() => {
                           setOpenDelete(id);
@@ -169,10 +170,10 @@ const   CategoriesCard = ({
                       />
                   </Card>
               )}
-              {togleBar == "center" && !edit && (
+              {togleBar === "center" && !edit && (
                   <Card
                       className={`flex p-2 m-2 hover-icon  bk-grey coderange-title ${
-                          openDelete == id && "bk-dull"
+                          openDelete === id && "bk-dull"
                       }`}
                       onClick={() => {
                           resetCard(id);
@@ -187,7 +188,7 @@ const   CategoriesCard = ({
           <div className="sep"></div>
           <div
               className={`d-flex ${
-                  togleBar == "center" ? "scroll-card" : "main-card-scroll"
+                  togleBar === "center" ? "scroll-card" : "main-card-scroll"
               }`}>
               {renderList.filteredList &&
               renderList.filteredList.length &&

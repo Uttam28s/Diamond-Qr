@@ -28,6 +28,8 @@ const   CategoriesCard = ({
   openDelete,
   children,resetCard
 }) => {
+  console.log("🚀 ~ list:", list)
+
   const [edit, setEdit] = useState(false);
   const [startCode, setstartCode] = useState(startRange);
   const [endCode, setendCode] = useState(endRange);
@@ -42,6 +44,7 @@ const   CategoriesCard = ({
 
   useEffect(() => {
       const updatedList = setunCate(list,startRange,endRange)
+      console.log("🚀 ~ useEffect ~ updatedList:", updatedList)
     setRenderList(updatedList);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startRange, endRange,list?.length,togleBar]);
@@ -77,14 +80,14 @@ const   CategoriesCard = ({
                   {!edit ? (
                       <>
                           <div className="font-medium">
-                              {startRange.toString() === "NaN"
+                              {startRange?.toString() === "NaN"
                                   ? startRange
-                                  : startRange.toString()}
+                                  : startRange?.toString()}
                               <span className="bk-green"></span>-
                               <span className="bka-red">
-                                  {endRange.toString() === "NaN"
+                                  {endRange?.toString() === "NaN"
                                       ? endRange
-                                      : endRange.toString()}
+                                      : endRange?.toString()}
                               </span>
                           </div>
                       </>

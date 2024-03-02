@@ -1,7 +1,7 @@
 {
   "name": "qr-code-hitesh",
   "homepage": "./",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "private": true,
   "scripts": {
     "start": "set PORT=3001 && react-scripts start",
@@ -23,8 +23,8 @@
     "url": "https://zeonlabs.co"
   },
   "build": {
-    "appId": "com.zeonlabs.qr-code-raj",
-    "productName": "Raj-QR-CODE-SCANNER",
+    "appId": "com.zeonlabs.qr-code-hitesh",
+    "productName": "HIIESH-QR-CODE-SCANNER",
     "copyright": "Copyright © 2020 Uttam",
     "mac": {
       "category": "public.app-category.utilities"

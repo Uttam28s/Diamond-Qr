@@ -98,7 +98,7 @@ const WeightSortBar = (props) => {
           (startRange &&
             endRange &&
             checkData[1] >= startRange &&
-            checkData[0] <= endRange) 
+            checkData[1] <= endRange) 
         ) {
           total1 = total1 + checkData[0];
           total2 = total2 + checkData[1];

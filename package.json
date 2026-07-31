@@ -14,7 +14,10 @@
     "package-win": "electron-packager . --overwrite --asar=true --platform=win32 --arch=ia32 --icon=assets/icon.ico --prune=true --out=release-builds --version-string.CompanyName=CE --version-string.FileDescription=CE --version-string.ProductName=\"QR-CODE-SCANNER\"",
     "package-linux": "electron-packager . qr-code --overwrite --asar=true --platform=linux --arch=x64 --icon=assets/linux-icon.png --prune=true --out=release-builds",
     "electron-pack": "build -mw",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "license:keygen": "node tools/generate-keypair.js",
+    "license:issue": "node tools/issue-license.js",
+    "license:verify": "node tools/issue-license.js --verify"
   },
   "main": "public/electron.js",
   "author": {
@@ -35,10 +38,21 @@
         "msi"
       ]
     },
+    "asar": true,
     "files": [
       "build/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "public/electron.js",
+      "public/license-preload.js",
+      "public/activation.html",
+      "public/splash.html",
+      "public/license/**/*",
+      "package.json",
+      "!tools/**/*"
     ],
+    "nsis": {
+      "include": "assets/installer.nsh"
+    },
     "directories": {
       "buildResources": "assets"
     }

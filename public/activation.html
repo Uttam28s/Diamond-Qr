@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';"
+    />
+    <title>Diamond QR - Activation</title>
+    <style>
+      :root {
+        --ink: #101828;
+        --muted: #667085;
+        --line: #e4e7ec;
+        --accent: #0f5c8c;
+        --accent-ink: #ffffff;
+        --danger: #b42318;
+        --danger-bg: #fef3f2;
+        --danger-line: #fecdca;
+        --ok: #027a48;
+        --ok-bg: #ecfdf3;
+        --surface: #ffffff;
+        --page: #f4f6f7;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 22px 28px 18px;
+        background: var(--page);
+        color: var(--ink);
+        font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+      h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+      .version { font-size: 12px; color: var(--muted); }
+      .lede { color: var(--muted); margin: 0 0 15px; font-size: 13px; }
+
+      .banner {
+        border: 1px solid var(--danger-line);
+        background: var(--danger-bg);
+        color: var(--danger);
+        border-radius: 8px;
+        padding: 13px 15px;
+        margin-bottom: 20px;
+        font-size: 13px;
+      }
+      .banner strong { display: block; margin-bottom: 3px; font-size: 14px; }
+      .banner .detail { color: #7a271a; opacity: 0.75; font-size: 12px; margin-top: 6px; }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 15px 17px;
+        margin-bottom: 13px;
+      }
+      .card h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 0 0 10px;
+        font-weight: 600;
+      }
+      .hint { color: var(--muted); font-size: 12px; margin: 0 0 11px; }
+
+      .code {
+        font-family: "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        line-height: 1.75;
+        background: #f8fafb;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 11px 12px;
+        word-break: break-all;
+        white-space: pre-wrap;
+        color: #344054;
+        -webkit-user-select: text;
+        user-select: text;
+        max-height: 150px;
+        overflow-y: auto;
+      }
+      textarea {
+        width: 100%;
+        min-height: 76px;
+        resize: vertical;
+        font-family: "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        line-height: 1.6;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 10px 11px;
+        color: #344054;
+        background: #fff;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      textarea:focus { outline: 2px solid rgba(15, 92, 140, 0.35); border-color: var(--accent); }
+
+      .row { display: flex; gap: 9px; align-items: center; margin-top: 11px; flex-wrap: wrap; }
+      button {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        border-radius: 7px;
+        padding: 8px 15px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) { background: #f8fafb; }
+      button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+      button.primary:hover:not(:disabled) { background: #0d4f79; }
+      button:disabled { opacity: 0.55; cursor: default; }
+      .spacer { flex: 1; }
+
+      .msg { font-size: 12.5px; margin-top: 11px; display: none; border-radius: 7px; padding: 9px 11px; }
+      .msg.err { display: block; background: var(--danger-bg); border: 1px solid var(--danger-line); color: var(--danger); }
+      .msg.ok { display: block; background: var(--ok-bg); border: 1px solid #a6f4c5; color: var(--ok); }
+
+      footer {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+      }
+      footer a { color: var(--accent); text-decoration: none; -webkit-user-select: text; user-select: text; }
+      .pill {
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 2px 7px;
+        border-radius: 20px;
+        background: #eef2f6;
+        color: var(--muted);
+      }
+      #loading { color: var(--muted); padding: 40px 0; text-align: center; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div id="loading">Checking licence...</div>
+
+    <div id="main" hidden>
+      <header>
+        <h1 id="heading">Activate this installation</h1>
+        <span class="version" id="version"></span>
+      </header>
+      <p class="lede" id="lede"></p>
+
+      <div class="banner" id="banner" hidden></div>
+
+      <div class="card">
+        <h2>Step 1 &mdash; Installation code</h2>
+        <p class="hint">
+          Send this code to the administrator. It identifies this computer only and
+          contains no personal data.
+        </p>
+        <div class="code" id="requestCode"></div>
+        <div class="row">
+          <button id="copyBtn">Copy code</button>
+          <button id="saveBtn">Save to file</button>
+          <span class="spacer"></span>
+          <span class="pill" id="strength"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Step 2 &mdash; Licence key</h2>
+        <p class="hint">Paste the licence key you received back from the administrator.</p>
+        <textarea id="keyInput" spellcheck="false" placeholder="DQR-L1...."></textarea>
+        <div class="row">
+          <button class="primary" id="activateBtn">Activate</button>
+          <button id="quitBtn">Exit</button>
+        </div>
+        <div class="msg" id="msg"></div>
+      </div>
+
+      <footer>
+        <span>Need help?</span>
+        <span id="support"></span>
+      </footer>
+    </div>
+
+    <script>
+      const el = (id) => document.getElementById(id);
+      let currentCode = "";
+
+      function setMsg(text, kind) {
+        const node = el("msg");
+        node.textContent = text;
+        node.className = "msg " + (kind || "");
+      }
+
+      function renderBlocked(status) {
+        const banner = el("banner");
+        const reasons = {
+          different_machine: [
+            "This software is not licensed for this computer.",
+            "The licence on this installation was issued for a different computer. Copying the program folder or the licence file to another PC does not carry the licence with it.",
+          ],
+          invalid_signature: [
+            "The licence on this installation is not valid.",
+            "The licence file is missing, damaged, or was modified. Please contact the administrator to set up this software.",
+          ],
+          expired: [
+            "This licence has expired.",
+            "Contact the administrator to renew the licence for this computer.",
+          ],
+          unverifiable: [
+            "This computer could not be identified.",
+            "The licence cannot be checked on this system. Please contact the administrator.",
+          ],
+        };
+        const [title, body] =
+          reasons[status.reason] || [
+            "This software is not licensed for this computer.",
+            "Please contact the administrator to set up this software.",
+          ];
+
+        banner.innerHTML = "";
+        const strong = document.createElement("strong");
+        strong.textContent = title;
+        const p = document.createElement("span");
+        p.textContent = body;
+        banner.append(strong, p);
+        if (status.detail) {
+          const d = document.createElement("div");
+          d.className = "detail";
+          d.textContent = "Technical detail: " + status.detail;
+          banner.appendChild(d);
+        }
+        banner.hidden = false;
+
+        el("heading").textContent = "Contact administrator";
+        el("lede").textContent =
+          "This copy cannot run until it is set up for this computer by the administrator.";
+      }
+
+      async function init() {
+        const status = await window.licenseAPI.getStatus();
+
+        el("loading").hidden = true;
+        el("main").hidden = false;
+        el("version").textContent = "v" + status.appVersion;
+
+        currentCode = status.requestCode || "";
+        el("requestCode").textContent = status.requestCodeDisplay || currentCode;
+        el("strength").textContent = "lock strength: " + (status.strength || "unknown");
+
+        if (status.state === "blocked") {
+          renderBlocked(status);
+        } else {
+          el("lede").textContent =
+            "This copy is licensed to one computer. Activation is needed once — after that the software opens straight away on this machine.";
+        }
+
+        const support = status.support || {};
+        const holder = el("support");
+        if (support.email) {
+          const a = document.createElement("a");
+          a.textContent = support.name ? support.name + " (" + support.email + ")" : support.email;
+          a.href = "#";
+          a.title = support.email;
+          holder.appendChild(a);
+        } else {
+          holder.textContent = support.name || "Contact your supplier.";
+        }
+      }
+
+      el("copyBtn").addEventListener("click", async () => {
+        await window.licenseAPI.copyToClipboard(currentCode);
+        el("copyBtn").textContent = "Copied";
+        setTimeout(() => (el("copyBtn").textContent = "Copy code"), 1600);
+      });
+
+      el("saveBtn").addEventListener("click", async () => {
+        const res = await window.licenseAPI.saveRequestCode(currentCode);
+        if (res && res.ok) setMsg("Saved to " + res.path, "ok");
+        else if (res && res.error) setMsg(res.error, "err");
+      });
+
+      el("activateBtn").addEventListener("click", async () => {
+        const key = el("keyInput").value.trim();
+        if (!key) {
+          setMsg("Paste the licence key first.", "err");
+          return;
+        }
+        el("activateBtn").disabled = true;
+        el("activateBtn").textContent = "Checking...";
+        setMsg("", "");
+
+        const res = await window.licenseAPI.activate(key);
+        if (res.ok) {
+          setMsg(res.message, "ok");
+          el("keyInput").disabled = true;
+          el("activateBtn").textContent = "Activated";
+          // Main process takes over from here and opens the application.
+        } else {
+          setMsg(res.message, "err");
+          el("activateBtn").disabled = false;
+          el("activateBtn").textContent = "Activate";
+        }
+      });
+
+      el("quitBtn").addEventListener("click", () => window.licenseAPI.quit());
+
+      el("keyInput").addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) el("activateBtn").click();
+      });
+
+      init().catch((err) => {
+        el("loading").hidden = true;
+        el("main").hidden = false;
+        setMsg("Could not read licence status: " + err.message, "err");
+      });
+    </script>
+  </body>
+</html>

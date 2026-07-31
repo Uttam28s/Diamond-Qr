@@ -12,15 +12,23 @@ let mainWindow;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    // width: 1280,
-    // height: 720,
+    width: 1536,
+    height: 1000,
+    minWidth: 1100,
+    minHeight: 720,
+    title: "Diamond QR",
+    backgroundColor: "#f4f6f7",
+    icon: path.join(__dirname, "../assets/icon.png"),
     webPreferences: { nodeIntegration: true },
   });
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.setAutoHideMenuBar(true);
+  // The renderer sets <title>, which would otherwise override the window title.
+  mainWindow.on("page-title-updated", (event) => event.preventDefault());
   mainWindow.maximize();
   mainWindow.loadURL(
     isDev
-      ? "http://localhost:3010"
+      ? "http://localhost:3001"
       : `file://${path.join(__dirname, "../build/index.html")}`
   );
   mainWindow.on("closed", () => (mainWindow = null));

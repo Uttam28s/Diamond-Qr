@@ -2,4 +2,4 @@
 // This is the PUBLIC half of the license signing key. It is safe to ship.
 // Licenses are minted with the matching private key, which lives only on the
 // admin machine (tools/keys/license-private.pem, gitignored).
-module.exports = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA8CAwST3D4bd3knG72cfVVzNnlQXZIecv30gdaRZNg1M=\n-----END PUBLIC KEY-----\n";
+module.exports = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAoT3NnQjYV7lUFsmyzEpZhqdne6QzatziDKM8dduvL0=\n-----END PUBLIC KEY-----\n";

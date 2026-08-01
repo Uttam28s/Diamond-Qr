@@ -103,6 +103,33 @@ npm run license:verify -- "DQR-L1...."
 
 ---
 
+## 3a. Delivery day checklist
+
+You cannot pre-activate an installer. The licence is bound to the customer's
+hardware, and you only learn their fingerprint once the app runs on their PC. So
+activation always happens *after* installation, with you in the loop.
+
+That does **not** mean you must be on site. The remote flow works fine:
+
+1. Customer runs `Raj-QR-CODE-SCANNER Setup 2.1.0.exe` and opens the app.
+2. Activation screen appears. They press **Copy code** (or **Save to file**) and
+   send you the installation code over WhatsApp/email.
+3. You run, on your machine:
+   ```bash
+   npm run license:issue -- --request "<their code>" --to "Customer name" --id CUST-001
+   ```
+4. You send back the `DQR-L1....` key. They paste it and press **Activate**.
+5. Done. That PC never asks again.
+
+Things worth having ready before you hand it over:
+
+- Your laptop with `tools/keys/license-private.pem` present, or wherever you keep it.
+  **Without the private key you cannot activate anybody.**
+- The installer is **unsigned**, so Windows SmartScreen will show
+  "Windows protected your PC". The customer must click *More info* -> *Run anyway*.
+  Warn them in advance, or it looks like a virus warning. See section 7 for signing.
+- If the customer has more than one PC, each needs its own code and its own key.
+
 ## 4. What the customer sees when a copy is stolen
 
 | Situation | Result |
@@ -193,6 +220,44 @@ Current setup is entirely offline, which suits shop-floor PCs with unreliable
 internet.
 
 ---
+
+## 7a. Building the installer
+
+```bash
+npm run build      # React bundle -> build/
+npx electron-builder --win nsis
+```
+
+Output lands in `dist/` as `Raj-QR-CODE-SCANNER Setup <version>.exe`.
+
+Two things in `build.files` are load-bearing, and both cost real time to rediscover:
+
+- **`!node_modules/**/*` plus explicit re-includes.** Most of this project's build
+  toolchain (`react-scripts`, `electron-packager`, the Babel/webpack tree) sits in
+  `dependencies` rather than `devDependencies`, and electron-builder copies every
+  production dependency. Without the exclusion the package balloons past 800 MB and
+  packaging runs 20+ minutes before failing on a file-lock race. The app does not
+  need any of it: webpack already bundles React/MUI/antd into `build/static/js`. The
+  **main process** requires exactly two external modules, so only those are
+  re-included:
+
+  ```
+  electron-is-dev      node-machine-id
+  ```
+
+  If you ever `require()` another module from `public/electron.js` or
+  `public/license/*`, you must add it to that list or the packaged app will die with
+  `MODULE_NOT_FOUND` on launch. Everything the *renderer* imports is fine - that all
+  goes through webpack.
+
+- **`tools/` is excluded**, which is what keeps `tools/keys/license-private.pem` out
+  of the installer. Verify after any packaging change:
+
+  ```bash
+  npx asar list dist/win-unpacked/resources/app.asar | grep -iE "\.pem|tools/"
+  ```
+
+  That must print nothing.
 
 ## 8. Files
 

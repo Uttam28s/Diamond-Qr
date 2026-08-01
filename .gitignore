@@ -13,6 +13,16 @@
 /build
 /dist
 
+# Licence signing keys -- NEVER commit these.
+# The private key is the ONLY thing stopping anyone from issuing licences for this
+# app. It was committed and pushed once (commit 92e44f3) and had to be rotated;
+# do not remove these lines.
+/tools/keys
+*.pem
+
+# Issued licences / activation records (contain customer hardware ids)
+/tools/issued
+
 # misc
 .DS_Store
 dev-server.log

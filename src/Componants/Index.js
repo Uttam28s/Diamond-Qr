@@ -33,7 +33,9 @@ import {
   writeJson,
 } from "./utils";
 
-const APP_VERSION = "2.0.3";
+// Injected from package.json "version" by the build/start scripts, so the version
+// shown in Settings can never drift from the installer version.
+const APP_VERSION = process.env.REACT_APP_VERSION || "2.1.0";
 
 const NAV_ITEMS = [
   { key: "scan", label: "Scan", title: "Scan Packet", Icon: IconScan },

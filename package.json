@@ -1,11 +1,12 @@
 {
   "name": "qr-code-raj",
   "homepage": "./",
-  "version": "2.0.3",
+  "version": "2.1.0",
+  "description": "Diamond QR - QR code scanning and kapan management for diamond sorting",
   "private": true,
   "scripts": {
-    "start": "set PORT=3001 && react-scripts start",
-    "build": "react-scripts build",
+    "start": "set PORT=3001 && set REACT_APP_VERSION=%npm_package_version% && react-scripts start",
+    "build": "set REACT_APP_VERSION=%npm_package_version% && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "electron-dev": "concurrently \"npm run start\" \"wait-on http://localhost:3001 && electron .\"",
@@ -41,14 +42,16 @@
     "asar": true,
     "files": [
       "build/**/*",
-      "node_modules/**/*",
       "public/electron.js",
       "public/license-preload.js",
       "public/activation.html",
       "public/splash.html",
       "public/license/**/*",
       "package.json",
-      "!tools/**/*"
+      "!tools/**/*",
+      "!node_modules/**/*",
+      "node_modules/electron-is-dev/**/*",
+      "node_modules/node-machine-id/**/*"
     ],
     "nsis": {
       "include": "assets/installer.nsh"

@@ -12,6 +12,8 @@ const deviceConfig = require("./db/config");
 const { createFileStore } = require("./db/fileStore");
 const { createServer } = require("./net/server");
 const { registerDataIpc } = require("./main/dataIpc");
+const { migrateUserData } = require("./main/migrateUserData");
+const { installDevToolsUnlock } = require("./main/devtools");
 
 /** Shown to the user on the activation / "contact administrator" screen. */
 const SUPPORT = {
@@ -45,8 +47,9 @@ function baseWebPreferences(extra = {}) {
     nodeIntegration: false,
     contextIsolation: true,
     webSecurity: true,
-    // No DevTools in a shipped build: it is the easiest way to poke at app internals.
-    devTools: isDev,
+    // Available, but not reachable: every inspector accelerator is swallowed, and
+    // the only way in is the chord plus the word in main/devtools.js.
+    devTools: true,
     ...extra,
   };
 }
@@ -101,6 +104,9 @@ function createMainWindow() {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.setAutoHideMenuBar(true);
+  // In dev the default menu is present and its accelerators are wanted. In a
+  // shipped build they are all dead and only the chord opens anything.
+  if (!isDev) installDevToolsUnlock(mainWindow);
   // The renderer sets <title>, which would otherwise override the window title.
   mainWindow.on("page-title-updated", (event) => event.preventDefault());
   mainWindow.maximize();
@@ -135,6 +141,8 @@ function createActivationWindow() {
   });
 
   activationWindow.setMenuBarVisibility(false);
+  // The licence screen is the last place an inspector should be a keystroke away.
+  if (!isDev) installDevToolsUnlock(activationWindow);
   activationWindow.on("page-title-updated", (event) => event.preventDefault());
   activationWindow.loadFile(path.join(__dirname, "activation.html"));
   activationWindow.once("ready-to-show", () => activationWindow.show());
@@ -145,6 +153,24 @@ function createActivationWindow() {
 /** Verify, then open either the app or the activation screen. */
 async function boot() {
   const splash = createSplashWindow();
+
+  // Before anything reads the licence or the database: if this is the first launch
+  // after the app was renamed, its folder moved, and everything is in the old one.
+  try {
+    const moved = migrateUserData({
+      userData: dataDir(),
+      appData: app.getPath("appData"),
+    });
+    if (moved.migrated) {
+      console.log(`[data] carried ${moved.copied.join(", ")} over from ${moved.from}`);
+    } else if (moved.error) {
+      console.warn(`[data] could not migrate from ${moved.from}: ${moved.error}`);
+    }
+  } catch (err) {
+    // Never block startup on this. A failed migration looks like a fresh install,
+    // which is recoverable; a crash on launch is not.
+    console.warn("[data] migration skipped:", err.message);
+  }
 
   try {
     licenseStatus = await license.evaluate(dataDir());

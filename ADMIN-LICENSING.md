@@ -40,11 +40,19 @@ app opens. Never asks again on this PC.
 The licence is stored at:
 
 ```
-%APPDATA%\qr-code-raj\license.dat
+%APPDATA%\Diamond QR\license.dat
 ```
 
 Note this is **outside** the program folder. Copying `C:\Program Files\...` to a USB
 stick does not carry the licence with it.
+
+**Before version 2.2.0 this folder was `%APPDATA%\qr-code-raj`.** Renaming the app
+moved it, because Windows names it after the product. On its first launch under the
+new name the app copies the licence, the device id and the whole database across and
+leaves the originals in place - so an upgrade does not deactivate anybody. If a
+customer on 2.2.0 is unexpectedly asked to activate, look for the old folder before
+issuing a new key: the migration is in `public/main/migrateUserData.js`, and the app
+writes a `migrated-from.txt` into the new folder recording what it did.
 
 ---
 
@@ -112,7 +120,8 @@ activation always happens *after* installation, with you in the loop.
 
 That does **not** mean you must be on site. The remote flow works fine:
 
-1. Customer runs `Raj-QR-CODE-SCANNER Setup 2.1.0.exe` and opens the app.
+1. Customer runs `Diamond QR Setup <version>.exe` and opens the app. The
+   step-by-step version of this, written for the customer, is [INSTALL.md](INSTALL.md).
 2. Activation screen appears. They press **Copy code** (or **Save to file**) and
    send you the installation code over WhatsApp/email.
 3. You run, on your machine:
@@ -206,9 +215,13 @@ lock rests mostly on MachineGuid alone; the CLI warns you about this when it hap
 `assets/installer.nsh` deletes **only** `license.dat` on a genuine uninstall, so a
 reinstall needs you to activate the machine again.
 
-It deliberately does **not** delete the rest of `%APPDATA%\qr-code-raj` - scan
+It deliberately does **not** delete the rest of `%APPDATA%\Diamond QR` - scan
 history and settings live there, and wiping a jeweller's records on uninstall would
 be far worse than a re-activation.
+
+The hook deletes `license.dat` from all three folder names electron-builder exposes
+(`APP_PACKAGE_NAME`, `APP_FILENAME`, `APP_PRODUCT_FILENAME`) rather than a hardcoded
+one, which is why the 2.2.0 rename did not quietly break it.
 
 The `${isUpdated}` guard matters: electron-builder runs the uninstaller as part of
 installing a new version. Without it, **every app update would deactivate every
@@ -259,40 +272,56 @@ internet.
 ## 7a. Building the installer
 
 ```bash
-npm run build      # React bundle -> build/
-npx electron-builder --win nsis
+npm run dist              # builds, hardens, then packages
+npm run verify:package    # then check what you are about to ship
 ```
 
-Output lands in `dist/` as `Raj-QR-CODE-SCANNER Setup <version>.exe`.
+Output lands in `dist/` as `Diamond QR Setup <version>.exe` and
+`Diamond QR <version>.msi`.
 
-Two things in `build.files` are load-bearing, and both cost real time to rediscover:
+`npm run build` runs `tools/harden-build.js` at the end. That is not cosmetic: the
+default build emits a source map containing the **entire original source**, comments
+and file names included, and it ships inside the installer unless something removes
+it. The script also strips the toolchain's identifiers from the bundle. If you ever
+run `npx react-scripts build` directly, you have skipped all of it.
 
-- **`!node_modules/**/*` plus explicit re-includes.** Most of this project's build
-  toolchain (`react-scripts`, `electron-packager`, the Babel/webpack tree) sits in
-  `dependencies` rather than `devDependencies`, and electron-builder copies every
-  production dependency. Without the exclusion the package balloons past 800 MB and
-  packaging runs 20+ minutes before failing on a file-lock race. The app does not
-  need any of it: webpack already bundles React/MUI/antd into `build/static/js`. The
-  **main process** requires exactly two external modules, so only those are
-  re-included:
+After changing anything about the bundle, run `npm run smoke`. It loads the packaged
+bundle in a real window and checks the app draws - a bundle broken by the identifier
+rename builds cleanly and fails at runtime with a blank window.
+
+Three things in `build.files` are load-bearing, and all three cost real time to
+rediscover:
+
+- **`!node_modules/**/*` plus explicit re-includes.** electron-builder copies every
+  production dependency. The app needs almost none of them: the renderer is bundled
+  into `build/app/`, so only what the **main process** `require()`s at runtime has to
+  be there, which is exactly two modules:
 
   ```
   electron-is-dev      node-machine-id
   ```
 
-  If you ever `require()` another module from `public/electron.js` or
-  `public/license/*`, you must add it to that list or the packaged app will die with
-  `MODULE_NOT_FOUND` on launch. Everything the *renderer* imports is fine - that all
-  goes through webpack.
+  If you ever `require()` another module from `public/electron.js`, `public/main/*` or
+  `public/license/*`, add it to that list or the packaged app dies with
+  `MODULE_NOT_FOUND` on launch. Anything the *renderer* imports is fine - that is all
+  bundled.
+
+  As of 2.2.0 the build toolchain sits in `devDependencies`, where it belongs for a
+  bundled renderer. That matters for more than tidiness: electron-builder ships the
+  `dependencies` list **verbatim** inside `app.asar/package.json`, so anything left in
+  there is on the customer's disk, naming every library the app is built from.
+
+- **`public/main/**/*` and `public/data-preload.js` must be listed.** A preload that
+  is missing from the package does not fail the build - the app opens and silently
+  falls back, which is how one shipped release ended up unable to reach its own
+  database. `npm run verify:package` now asserts every one of these is present.
 
 - **`tools/` is excluded**, which is what keeps `tools/keys/license-private.pem` out
-  of the installer. Verify after any packaging change:
+  of the installer.
 
-  ```bash
-  npx asar list dist/win-unpacked/resources/app.asar | grep -iE "\.pem|tools/"
-  ```
-
-  That must print nothing.
+`npm run verify:package` extracts the packaged `app.asar` and fails on any private
+key, any source map, any toolchain fingerprint, and any missing required file. Run it
+before every delivery; it is the only check that looks at what actually ships.
 
 ## 8. Files
 
@@ -310,9 +339,22 @@ Two things in `build.files` are load-bearing, and both cost real time to redisco
 | `tools/issue-license.js` | issue and verify licences |
 | `tools/keys/` | **secret**, gitignored |
 | `tools/issued/licenses.json` | your record of issued licences, gitignored |
+| `public/main/migrateUserData.js` | carries licence + data across the 2.2.0 rename |
+| `public/main/devtools.js` | the chord-and-word DevTools unlock |
+| `tools/harden-build.js` | scrubs `build/`; runs as part of `npm run build` |
+| `tools/verify-package.js` | inspects the packaged asar before delivery |
+| `tools/smoke-test.js` | runs the packaged bundle in a real window |
+| `tools/make-icon.js` | draws the app icon at every size |
+| `tools/devtools-secret.js` | hashes a new maintenance word |
 
 Verification runs **only** in the main process. The activation window reaches it
 through a narrow `contextBridge` API and is never trusted to decide whether the app
 may run - the app UI is not even loaded until the main process has verified a licence.
-Renderers now run with `nodeIntegration: false`, `contextIsolation: true`, and no
-DevTools in production builds.
+Renderers run with `nodeIntegration: false` and `contextIsolation: true`.
+
+**DevTools in a shipped build.** As of 2.2.0 DevTools is enabled but unreachable: every
+inspector accelerator is swallowed, and it opens only after `Ctrl+Alt+Shift+D` followed
+by the maintenance word. Only the word's SHA-256 is in the source, so unpacking the app
+reveals the chord but not the word. Change it with
+`npm run devtools:secret -- "new word"` and rebuild. The activation window is guarded
+the same way - it is the last place an inspector should be one keystroke away.

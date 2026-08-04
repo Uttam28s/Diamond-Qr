@@ -161,13 +161,21 @@ In the Windows user-data folder, not in Program Files, so an app update never
 touches it:
 
 ```
-%APPDATA%\Raj-QR-CODE-SCANNER\
-  snapshot.json     the state as of the last compaction
-  journal.jsonl     one change per line since then
-  snapshot.bak      the previous snapshot
-  backups\          a dated copy per day, newest 14 kept
-  device.json       what this PC is (role, name, token)
+%APPDATA%\Diamond QR\
+  license.dat       the activation for this PC
+  device.json       what this PC is (role, name, token, device id)
+  data\
+    snapshot.json   the state as of the last compaction
+    journal.jsonl   one change per line since then
+    snapshot.bak    the previous snapshot
+    backups\        a dated copy per day, newest 14 kept
 ```
+
+The folder was `%APPDATA%\Raj-QR-CODE-SCANNER\` before version 2.2.0. Windows
+derives it from the product name, so renaming the app moved it — and the licence
+with it. On its first launch under the new name the app copies the old folder
+across and leaves the original in place; see
+[public/main/migrateUserData.js](public/main/migrateUserData.js) and its tests.
 
 Every write is a line appended to the journal — small and instant. The snapshot
 is rewritten every 250 changes. Both the snapshot and each backup are written to
@@ -179,7 +187,8 @@ renaming the snapshot, the `.bak` is used and the app says so.
 the window" is a fact about one computer, not about the factory's Kapans.
 
 **To back up:** copy the whole folder. Settings shows its exact path and can
-restore from a backup file.
+restore from a backup file. Only the host holds data — backing up a client
+achieves nothing.
 
 ---
 
@@ -195,20 +204,69 @@ guide is the check that proves it.
 
 ---
 
-## 7. Working on it
+## 7. Installing it on a factory PC
+
+Step by step, including the host/client setup and what to do when the network or
+the firewall gets in the way: **[INSTALL.md](INSTALL.md)**.
+
+---
+
+## 8. Working on it
 
 ```bash
 npm install
-npm run electron-dev     # React on :3001 plus Electron
-npm test                 # 413 tests
-npm run build            # production React build
+npm run electron-dev     # the UI on :3001 plus the desktop shell
+npm test                 # 427 tests
+npm run build            # production build, then hardened (see below)
+npm run smoke            # loads the built bundle in a real window and checks it
 npm run dist             # Windows installer
+npm run verify:package   # inspects the installed package for leaks
+npm run icon             # redraws the app icon at every size
 ```
+
+### The build is scrubbed before it ships
+
+`npm run build` ends by running [tools/harden-build.js](tools/harden-build.js),
+which removes what should never leave the building and strips the toolchain's
+fingerprints:
+
+- **Source maps.** The default build emits one containing the entire original
+  source, comments and file names included — 1.3 MB of it, inside the installer.
+- **The bundled libraries' licence headers**, which name every dependency.
+- **The framework's own identifiers.** Done as one uniform case-preserving
+  rename over the whole bundle, so every reference stays consistent with its
+  definition. Renaming them one at a time is how you get a subtly broken bundle.
+- **`static/js/main.<hash>.js`** becomes `app/ui.<hash>.js`, because the path
+  itself is a signature.
+
+The script fails the build rather than passing quietly, and
+`npm run verify:package` re-checks the same things inside the packaged `app.asar`
+— which is what actually ships, and where the two worst leaks this project has
+had were only ever visible.
+
+**`npm run smoke` is not optional after touching that script.** A bundle broken
+by a bad rename builds perfectly and fails at runtime with an empty window.
+
+### Opening DevTools in a shipped build
+
+Deliberately hard. `Ctrl+Alt+Shift+D`, then type the maintenance word and press
+Enter — no prompt appears and a wrong word looks exactly like nothing happening.
+`F12`, `Ctrl+Shift+I`, `Ctrl+Shift+J` and `Ctrl+Shift+C` are all dead.
+
+Only the word's SHA-256 is in the source. To change it:
+
+```bash
+npm run devtools:secret -- "a new word"
+# paste the hash over SECRET_SHA256 in public/main/devtools.js, then rebuild
+```
+
+See [public/main/devtools.js](public/main/devtools.js) for why this is not
+configurable through an environment variable.
 
 ### How the code is arranged
 
-Business rules are plain JavaScript with no React in them, so they can be tested
-directly and read without tracing a component tree.
+Business rules are plain JavaScript with no UI framework in them, so they can be
+tested directly and read without tracing a component tree.
 
 ```
 src/domain/

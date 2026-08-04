@@ -14,8 +14,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * move rows, since a single-line input has nothing to do with them.
  *
  * Row index `rowCount` is the ghost row at the bottom of the sheet. The cursor
- * deliberately stays there after a row is created, so a run of lots is one
- * number and one Enter each.
+ * deliberately stays there after a row is created, so a run of lots is one Enter
+ * each rather than a trip back down the sheet between them.
  */
 export const useSheetCursor = ({ rowCount, columnCount, onCommitGhost }) => {
   const [cursor, setCursor] = useState({ row: 0, col: 0 });
@@ -142,8 +142,9 @@ export const useSheetCursor = ({ rowCount, columnCount, onCommitGhost }) => {
       if (event.key === "Enter") {
         event.preventDefault();
         if (isGhost) {
-          // Creating a lot leaves the cursor exactly where it is, so the next
-          // pcs value can be typed straight away.
+          // Creating a lot leaves the cursor exactly where it is, so the next one
+          // is another Enter away. The + on the ghost row does the same thing for
+          // the mouse.
           if (onCommitGhost) onCommitGhost();
           return;
         }

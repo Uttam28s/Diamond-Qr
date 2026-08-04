@@ -160,9 +160,16 @@ If all four are true, the setup is finished.
 
 ## 7. When something is wrong
 
+**"The saved data could not be opened — this PC has no local database", right after activating**
+**Close the app and open it again.** It will work. This was a bug in the first
+2.2.0 build, on the one path that only runs once per PC: the app opened the
+window before opening its database. Fixed in the current installer — but the
+restart is the fix on any PC that already has the older one, and nothing is lost
+either way.
+
 **"The app cannot reach its own database"**
-The installation is incomplete — a file is missing. Uninstall and reinstall from
-the full installer. Do not copy the app folder from another PC.
+A different fault: the installation is incomplete, a file is missing. Uninstall
+and reinstall from the full installer. Do not copy the app folder from another PC.
 
 **A client says it cannot reach the host**
 Work through these in order, at the host:

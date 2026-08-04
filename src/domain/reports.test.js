@@ -31,7 +31,13 @@ import { formatDay, formatInt, formatPercent, formatSize, formatWeight } from ".
  * arithmetic.
  */
 
-/** Kapan 41's 28 readable rows, loaded through the real operations. */
+/**
+ * Kapan 41's 28 readable rows, loaded through the real operations.
+ *
+ * The scan bumps each lot's pcs by one as it lands, so the workbook's own નંગ is
+ * set afterwards - these tests are about the reports, and the fixture rows are the
+ * figures they have to reproduce.
+ */
 const buildKapan41 = () => {
   const { lots, packetsByLot } = buildFixture();
 
@@ -44,7 +50,6 @@ const buildKapan41 = () => {
 
   lots.forEach((fixtureLot) => {
     state = createLot(state, kapanId, {
-      pcs: fixtureLot.pcs,
       charmi: fixtureLot.charmi,
       lotDate: fixtureLot.lotDate,
     }).state;
@@ -66,13 +71,16 @@ const buildKapan41 = () => {
       scannedOn: "OFFICE-PC",
     }).state;
 
-    if (fixtureLot.returnPcs !== null) {
-      state = updateLot(state, lot.id, {
-        returnPcs: fixtureLot.returnPcs,
-        returnWeight: fixtureLot.returnWeight,
-        returnDate: "2026-01-20",
-      }).state;
-    }
+    state = updateLot(state, lot.id, {
+      pcs: fixtureLot.pcs,
+      ...(fixtureLot.returnPcs === null
+        ? {}
+        : {
+            returnPcs: fixtureLot.returnPcs,
+            returnWeight: fixtureLot.returnWeight,
+            returnDate: "2026-01-20",
+          }),
+    }).state;
   });
 
   return { state, kapanId };

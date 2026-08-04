@@ -85,6 +85,11 @@ export const createKapan = ({
   updatedAt: new Date().toISOString(),
 });
 
+/**
+ * A new lot starts with no pcs. One packet holds one diamond, so the figure fills
+ * itself in as packets are scanned into the lot - and it stays editable, because a
+ * lot entered from a paper slip has a count before anything has been scanned.
+ */
 export const createLot = ({
   kapanId,
   lotNo,
@@ -142,19 +147,27 @@ export const renumberLots = (lots = []) =>
 
 /**
  * Problems worth showing the owner, as a list rather than a throw - a lot with
- * a missing date is still a lot, and blocking the save would lose the pcs they
- * just typed. The sheet's own rows have gaps in them.
+ * a missing date is still a lot, and blocking the edit would lose what they just
+ * typed. The sheet's own rows have gaps in them.
+ *
+ * Deliberately NOT flagged: a lot with no pcs yet. That is the normal state of a
+ * lot for the hours between creating it and scanning its packets - the count fills
+ * itself in as they arrive - and striping every fresh row amber would teach
+ * everyone to ignore the warnings that do matter.
  */
 export const lotWarnings = (lot, derived) => {
   const warnings = [];
 
   if (!lot.lotDate) warnings.push("No lot date");
-  if (lot.pcs === null) warnings.push("No pcs entered");
 
-  if (derived && derived.returnPcs !== null && lot.pcs !== null) {
-    if (derived.returnPcs > lot.pcs) {
+  if (derived && derived.returnPcs > 0) {
+    if (derived.pcs === null) {
       warnings.push(
-        `More pcs returned (${derived.returnPcs}) than went out (${lot.pcs})`
+        `${derived.returnPcs} pcs returned, but this lot has no pcs against it`
+      );
+    } else if (derived.returnPcs > derived.pcs) {
+      warnings.push(
+        `More pcs returned (${derived.returnPcs}) than went out (${derived.pcs})`
       );
     }
   }

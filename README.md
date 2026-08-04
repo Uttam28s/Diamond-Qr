@@ -36,8 +36,8 @@ The lot sheet is the factory's own sheet. Left to right:
 |---|----------|---------|---------------------|
 | 1 | ક્રમ | Lot number | assigned, never reused |
 | 2 | તારીખ | Date sent out | typed |
-| 3 | નંગ | Pieces out | typed |
-| 4 | વજન | Rough weight | typed |
+| 3 | નંગ | Pieces out | typed — **each scan adds one** |
+| 4 | વજન | Rough weight | **sum of scanned packets** |
 | 5 | સારણી | Sieve / charmi | typed — **may be negative** |
 | 6 | તૈયાર વ. | Polished weight | **sum of scanned packets** |
 | 7 | ટકાવારી | Yield % | polished ÷ rough |
@@ -48,8 +48,15 @@ The lot sheet is the factory's own sheet. Left to right:
 | 12 | બા. નંગ | Missing pieces | pieces out − pieces returned |
 | 13 | જ.તારીખ | Date returned | typed |
 
-Only column 6 comes from scanning. Everything else is either typed or computed,
-and every computed figure lives in one file — [src/domain/totals.js](src/domain/totals.js).
+Columns 4 and 6 come from scanning. Everything else is either typed or computed,
+and every computed figure lives in one file —
+[src/domain/totals.js](src/domain/totals.js).
+
+Column 3 is both: **one packet holds one diamond**, so filing a scan into a lot
+adds one to its નંગ, and taking one back out subtracts one. The cell stays
+editable, because a lot written up from a paper slip has a count before anything
+has been scanned and a miscount has to be correctable. The two compose — type
+140, scan two packets, and the cell reads 142.
 
 **Two rules that look like bugs and are not:**
 
@@ -219,6 +226,7 @@ npm run electron-dev     # the UI on :3001 plus the desktop shell
 npm test                 # 427 tests
 npm run build            # production build, then hardened (see below)
 npm run smoke            # loads the built bundle in a real window and checks it
+npm run test:activation  # boots the real main process and activates a fresh PC
 npm run dist             # Windows installer
 npm run verify:package   # inspects the installed package for leaks
 npm run icon             # redraws the app icon at every size
@@ -246,6 +254,23 @@ had were only ever visible.
 
 **`npm run smoke` is not optional after touching that script.** A bundle broken
 by a bad rename builds perfectly and fails at runtime with an empty window.
+
+### The first launch after activation
+
+`npm run test:activation` exists because that path runs exactly once per PC, on the
+customer's machine, and it shipped broken: `boot()` opens the database only when the
+app is *already* licensed, so a PC that had just been activated opened straight onto
+"The saved data could not be opened — this PC has no local database". Restarting the
+app cleared it, which is why it survived everything else: the second launch takes the
+other path.
+
+The test boots the real [public/electron.js](public/electron.js) against a throwaway
+userData with no licence, types a real key into the real activation screen, and checks
+what the app window shows. Nothing cheaper catches it — jest cannot see the main
+process, and the smoke test builds its own window instead of going through activation.
+
+Anything that changes how windows are created should be checked with it, because there
+are two ways into the app window and only one of them is exercised day to day.
 
 ### Opening DevTools in a shipped build
 

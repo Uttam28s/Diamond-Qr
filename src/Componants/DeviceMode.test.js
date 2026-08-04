@@ -114,7 +114,7 @@ describe("an office PC", () => {
     expect(await screen.findByRole("button", { name: /New Kapan/i })).toBeInTheDocument();
     await userEvent.click(await screen.findByText("41"));
     expect(await screen.findByRole("button", { name: /^Delete$/i })).toBeInTheDocument();
-    expect(screen.getByLabelText("New lot pcs")).toBeInTheDocument();
+    expect(screen.getByLabelText("Add lot 2")).toBeInTheDocument();
   });
 });
 
@@ -151,11 +151,13 @@ describe("a scan station", () => {
     expect(await screen.findByText("કા. નંગ")).toBeInTheDocument();
     const row = screen.getByTitle(/in lot 1$/).closest("tr");
     expect(within(row).getByLabelText("Lot 1 pcs")).toBeDisabled();
+    expect(within(row).getByLabelText("Lot 1 charmi")).toBeDisabled();
 
     // But none of the ways to change things.
     expect(screen.queryByRole("button", { name: /^Delete$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Renumber/i })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("New lot pcs")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Add lot \d+$/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("New lot charmi")).not.toBeInTheDocument();
     expect(screen.queryByTitle(/Delete lot 1/i)).not.toBeInTheDocument();
   });
 

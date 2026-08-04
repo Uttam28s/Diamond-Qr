@@ -20,6 +20,7 @@ import {
   normalizeKapanNumber,
   renumberLots as renumber,
   SCHEMA_VERSION,
+  toNumber,
 } from "./model";
 
 export const emptyState = () => ({
@@ -271,6 +272,56 @@ export const renumberKapanLots = (state, kapanId) => {
 
 /* ------------------------------------------------------------------ packets */
 
+/**
+ * Moves a lot's નંગ by `delta` as packets arrive in it or leave it.
+ *
+ * One packet holds one diamond, so a lot's pcs is the count of the packets filed
+ * into it and nobody should be adding up barcodes by hand. The column stays typed
+ * all the same - a lot entered from a paper slip has a figure before anything is
+ * scanned, and a miscount has to be correctable - so this adjusts what is there
+ * rather than replacing it.
+ *
+ * `null` means nobody has said yet. A packet arriving turns that into 1; a packet
+ * leaving a lot whose count nobody has given leaves it null rather than inventing
+ * a 0, because the loss report reads those two differently.
+ */
+const shiftPcs = (lots, lotId, delta) => {
+  const lot = lotId ? lots[lotId] : null;
+  if (!lot || !delta) return lots;
+  if (delta < 0 && lot.pcs === null) return lots;
+
+  return {
+    ...lots,
+    // Never below zero: deleting more scans than the typed figure admits to is a
+    // correction to make in the cell, not a negative count to store.
+    //
+    // `updatedAt` is deliberately left alone. It makes pcs the only field a scan
+    // changes on the row, which is what lets the change travel to the host as an
+    // increment rather than as a row overwriting whatever count is already there -
+    // see `computeDelta`. Nothing reads a lot's updatedAt.
+    [lotId]: { ...lot, pcs: Math.max(0, toNumber(lot.pcs) + delta) },
+  };
+};
+
+/** The lot rows a packet change touched, so its undo can put them back exactly. */
+const lotsBefore = (lots, ids) => {
+  const snapshot = {};
+  [...new Set(ids)].forEach((id) => {
+    if (id && lots[id]) snapshot[id] = lots[id];
+  });
+  return snapshot;
+};
+
+const restoreLots = (lots, snapshot) => {
+  const next = { ...lots };
+  Object.keys(snapshot).forEach((id) => {
+    // Only a lot that is still there: if it was deleted since, that deletion is a
+    // separate change with an undo of its own.
+    if (next[id]) next[id] = snapshot[id];
+  });
+  return next;
+};
+
 export const addPacket = (state, fields = {}) => {
   const { kapanId, lotId } = fields;
 
@@ -278,12 +329,22 @@ export const addPacket = (state, fields = {}) => {
   if (lotId && !state.lots[lotId]) return noChange(state, "That lot no longer exists.");
 
   const packet = makePacket(fields);
+  const before = lotsBefore(state.lots, [packet.lotId]);
 
   return result(
-    { ...state, packets: { ...state.packets, [packet.id]: packet } },
+    {
+      ...state,
+      packets: { ...state.packets, [packet.id]: packet },
+      // The scan counts itself into its lot's નંગ.
+      lots: shiftPcs(state.lots, packet.lotId, 1),
+    },
     {
       label: "Scan removed",
-      apply: (s) => ({ ...s, packets: omit(s.packets, packet.id) }),
+      apply: (s) => ({
+        ...s,
+        packets: omit(s.packets, packet.id),
+        lots: restoreLots(s.lots, before),
+      }),
     }
   );
 };
@@ -309,12 +370,25 @@ export const movePackets = (state, packetIds = [], targetLotId = null) => {
   }
 
   const nextPackets = { ...state.packets };
+  let nextLots = state.lots;
+
   moving.forEach((packet) => {
     nextPackets[packet.id] = { ...packet, lotId: targetLotId };
+    // Filing a scan somewhere else moves its diamond's count with it. A packet
+    // already in the target lot is a no-op, not a reason to count it twice.
+    if (packet.lotId !== targetLotId) {
+      nextLots = shiftPcs(nextLots, packet.lotId, -1);
+      nextLots = shiftPcs(nextLots, targetLotId, 1);
+    }
   });
 
+  const before = lotsBefore(state.lots, [
+    targetLotId,
+    ...moving.map((packet) => packet.lotId),
+  ]);
+
   return result(
-    { ...state, packets: nextPackets },
+    { ...state, packets: nextPackets, lots: nextLots },
     {
       label: `${moving.length} packet(s) moved ${
         target ? `to lot ${target.lotNo}` : "to Unassigned"
@@ -324,7 +398,7 @@ export const movePackets = (state, packetIds = [], targetLotId = null) => {
         moving.forEach((packet) => {
           restored[packet.id] = packet;
         });
-        return { ...s, packets: restored };
+        return { ...s, packets: restored, lots: restoreLots(s.lots, before) };
       },
     }
   );
@@ -335,10 +409,19 @@ export const deletePackets = (state, packetIds = []) => {
   if (!removing.length) return noChange(state, "Those packets no longer exist.");
 
   const nextPackets = { ...state.packets };
-  removing.forEach((packet) => delete nextPackets[packet.id]);
+  let nextLots = state.lots;
+
+  removing.forEach((packet) => {
+    delete nextPackets[packet.id];
+    // A scan taken back takes its diamond out of the lot's count too, or deleting
+    // a mis-scan would leave the નંગ permanently one too high.
+    nextLots = shiftPcs(nextLots, packet.lotId, -1);
+  });
+
+  const before = lotsBefore(state.lots, removing.map((packet) => packet.lotId));
 
   return result(
-    { ...state, packets: nextPackets },
+    { ...state, packets: nextPackets, lots: nextLots },
     {
       label: `${removing.length} packet(s) deleted`,
       apply: (s) => {
@@ -346,7 +429,7 @@ export const deletePackets = (state, packetIds = []) => {
         removing.forEach((packet) => {
           restored[packet.id] = packet;
         });
-        return { ...s, packets: restored };
+        return { ...s, packets: restored, lots: restoreLots(s.lots, before) };
       },
     }
   );

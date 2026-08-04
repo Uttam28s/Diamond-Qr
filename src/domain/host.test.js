@@ -53,7 +53,7 @@ describe("deltas", () => {
       kapans: { k1: kapan("k1", "41") },
       lots: { l1: lot("l1", "k1", 1, 142), l2: lot("l2", "k1", 2, 140) },
     });
-    const editedLot = { ...before.lots.l1, pcs: 999 };
+    const editedLot = { ...before.lots.l1, charmi: 7 };
     const after = { ...before, lots: { ...before.lots, l1: editedLot } };
 
     const delta = computeDelta(before, after);
@@ -62,6 +62,82 @@ describe("deltas", () => {
     // l2 is untouched, so it is the same object and must not be in the delta.
     expect(delta.upserts.lots.l2).toBeUndefined();
     expect(Object.keys(delta.upserts.kapans)).toEqual([]);
+  });
+
+  /* ----------------------------------------------------------------------
+     નંગ travels as a shift, not as a row. This is what keeps a scan station
+     working through an outage: one packet is one diamond, so filing it adds one
+     to the lot's count, and an increment lands correctly on whatever the host
+     holds instead of overwriting a count another PC made meanwhile.
+     ---------------------------------------------------------------------- */
+
+  describe("pcs shifts", () => {
+    // One base, shared: computeDelta compares by reference, so rebuilding the
+    // untouched rows per case would report them as changed.
+    const base = stateWith({
+      kapans: { k1: kapan("k1", "41") },
+      lots: { l1: lot("l1", "k1", 1, 142) },
+    });
+
+    const withPcs = (state, pcs) => ({
+      ...state,
+      lots: { ...state.lots, l1: { ...state.lots.l1, pcs } },
+    });
+
+    it("records a pcs-only change as a shift rather than a row", () => {
+      const delta = computeDelta(base, withPcs(base, 143));
+
+      expect(delta.counters.lots).toEqual({ l1: 1 });
+      expect(delta.upserts.lots.l1).toBeUndefined();
+      // Which is what lets a scan into a lot be queued through an outage.
+      expect(isAdditiveOnly(delta)).toBe(true);
+    });
+
+    it("starts a count that nobody had given yet", () => {
+      const empty = withPcs(base, null);
+      expect(computeDelta(empty, withPcs(empty, 3)).counters.lots).toEqual({ l1: 3 });
+    });
+
+    it("sends a cleared cell as a row, because it is not a count of pieces", () => {
+      const delta = computeDelta(base, withPcs(base, null));
+
+      expect(delta.counters.lots).toEqual({});
+      expect(delta.upserts.lots.l1.pcs).toBeNull();
+      // So it is version-checked like any other edit rather than merged blindly.
+      expect(isAdditiveOnly(delta)).toBe(false);
+    });
+
+    it("sends a row when anything else on the lot changed too", () => {
+      const both = {
+        ...base,
+        lots: { ...base.lots, l1: { ...base.lots.l1, pcs: 143, charmi: 7 } },
+      };
+      const delta = computeDelta(base, both);
+
+      expect(delta.counters.lots).toEqual({});
+      expect(delta.upserts.lots.l1.pcs).toBe(143);
+      expect(isAdditiveOnly(delta)).toBe(false);
+    });
+
+    it("adds to the count the host already has, rather than replacing it", () => {
+      // The station scanned one in believing the lot held 142. The office counted
+      // three in meanwhile, so the host is on 145.
+      const delta = computeDelta(base, withPcs(base, 143));
+
+      expect(applyDelta(withPcs(base, 145), delta).lots.l1.pcs).toBe(146);
+    });
+
+    it("applies nothing for a lot that has since been deleted", () => {
+      const delta = computeDelta(base, withPcs(base, 143));
+      const host = stateWith({ kapans: { k1: kapan("k1", "41") } });
+
+      expect(applyDelta(host, delta).lots.l1).toBeUndefined();
+    });
+
+    it("never lands on a negative count", () => {
+      const delta = computeDelta(withPcs(base, 5), withPcs(base, 1)); // -4
+      expect(applyDelta(withPcs(base, 2), delta).lots.l1.pcs).toBe(0);
+    });
   });
 
   it("records deletions", () => {

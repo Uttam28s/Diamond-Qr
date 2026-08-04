@@ -262,9 +262,9 @@ describe("runAll - several changes as one undoable step", () => {
     const kapanId = kapanByNumber(store.getState(), "41").id;
 
     await store.runAll([
-      (s) => createLot(s, kapanId, { pcs: 100 }),
-      (s) => createLot(s, kapanId, { pcs: 200 }),
-      (s) => createLot(s, kapanId, { pcs: 300 }),
+      (s) => createLot(s, kapanId, { charmi: -2 }),
+      (s) => createLot(s, kapanId, { charmi: 2 }),
+      (s) => createLot(s, kapanId, { charmi: 7 }),
     ]);
 
     expect(lotsOfKapan(store.getState(), kapanId)).toHaveLength(3);
@@ -279,8 +279,8 @@ describe("runAll - several changes as one undoable step", () => {
     const before = store.getState();
 
     await store.runAll([
-      (s) => createLot(s, kapanId, { pcs: 100 }),
-      (s) => createLot(s, kapanId, { pcs: 200 }),
+      (s) => createLot(s, kapanId, { charmi: -2 }),
+      (s) => createLot(s, kapanId, { charmi: 2 }),
     ]);
     await store.undo();
 

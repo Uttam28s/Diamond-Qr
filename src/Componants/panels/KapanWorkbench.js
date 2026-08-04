@@ -28,7 +28,7 @@ const KapanWorkbench = ({
   readOnly,
 }) => {
   const [expandedLotId, setExpandedLotId] = useState(null);
-  const { kapan, totals, rows, unassigned } = view;
+  const { kapan, totals, rows, lots, unassigned } = view;
 
   const toggleLot = (lotId) =>
     setExpandedLotId((current) => (current === lotId ? null : lotId));
@@ -114,7 +114,7 @@ const KapanWorkbench = ({
 
       <UnassignedTray
         packets={unassigned}
-        lots={rows.map((row) => row.lot)}
+        lots={lots}
         totals={totals}
         run={run}
         onConfirm={onConfirm}

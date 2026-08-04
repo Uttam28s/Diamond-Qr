@@ -4,6 +4,7 @@ import PacketMover from "./PacketMover";
 import { useSheetCursor } from "../../hooks/useSheetCursor";
 import { parseDateEntry, parseLotField } from "../../domain/entry";
 import { createLot, deleteLot, updateLot } from "../../domain/operations";
+import { lotTargets } from "../../domain/selectors";
 import {
   BLANK,
   dayForEditing,
@@ -33,7 +34,16 @@ import {
 const COLUMNS = [
   { key: "lotNo", guj: "ક્રમ", en: "No.", align: "num", width: 52 },
   { key: "lotDate", guj: "તારીખ", en: "Date", aria: "date", edit: "date", width: 104 },
-  { key: "pcs", guj: "નંગ", en: "Pcs", aria: "pcs", edit: "number", align: "num", width: 72 },
+  {
+    key: "pcs",
+    guj: "નંગ",
+    en: "Pcs",
+    aria: "pcs",
+    edit: "number",
+    align: "num",
+    width: 72,
+    note: "Counts itself up as packets are scanned into the lot — still editable by hand",
+  },
   { key: "kachuWeight", guj: "વજન", en: "Rough", align: "num", width: 86 },
   { key: "charmi", guj: "સારણી", en: "Charmi", aria: "charmi", edit: "number", align: "num", width: 76 },
   { key: "polishedWeight", guj: "તૈયાર વ.", en: "Polished", align: "num", width: 86 },
@@ -69,6 +79,18 @@ const derivedValue = (column, derived) => {
   }
 };
 
+/**
+ * Which derived cells are printed as a problem rather than a number.
+ *
+ * ઘટ goes negative routinely - it is what a return heavier than the polished
+ * weight looks like, and the real sheet is full of them. બા. નંગ going negative is
+ * different: more pieces came back than went out, which the row's warning also
+ * names.
+ */
+const isNegative = (column, derived) =>
+  (column.key === "ghatPct" && derived.ghatPct < 0) ||
+  (column.key === "remainingPcs" && derived.remainingPcs < 0);
+
 const storedValue = (lot, key) =>
   key === "lotDate" || key === "returnDate"
     ? dayForEditing(lot[key])
@@ -102,21 +124,18 @@ const LotSheet = ({
   readOnly = false,
 }) => {
   const [draft, setDraft] = useState(null); // {row, key, text}
-  const [ghost, setGhost] = useState({ pcs: "", charmi: "", lotDate: "" });
-  const ghostRef = useRef(null);
+  const [ghost, setGhost] = useState({ charmi: "", lotDate: "" });
+  const addRef = useRef(null);
 
+  /**
+   * Adds the lot the ghost row describes.
+   *
+   * A lot needs nothing typed at all now that its pcs are counted from its scans,
+   * so this is a deliberate act rather than a side effect of finishing a number:
+   * the + on the ghost row, or Enter from one of its two cells. Charmi and the
+   * date stay put afterwards, because runs of lots share them.
+   */
   const commitGhost = useCallback(async () => {
-    const text = `${ghost.pcs}`.trim();
-    // An empty ghost row is not an error - Enter on it simply does nothing,
-    // which is what someone tabbing through the sheet expects.
-    if (!text && !`${ghost.charmi}`.trim()) return;
-
-    const pcs = parseLotField("pcs", ghost.pcs, null);
-    if (!pcs.ok) {
-      onNotify(pcs.error, "error");
-      return;
-    }
-
     const charmi = parseLotField("charmi", ghost.charmi, null);
     if (!charmi.ok) {
       onNotify(charmi.error, "error");
@@ -131,19 +150,15 @@ const LotSheet = ({
 
     const outcome = await run((state) =>
       createLot(state, kapan.id, {
-        pcs: pcs.value,
         charmi: charmi.value,
         // Blank means today, so the common case needs no typing at all.
         ...(date.value ? { lotDate: date.value } : {}),
       })
     );
 
-    if (outcome.ok) {
-      // Charmi and the date carry over to the next row because runs of lots
-      // share them; pcs clears because it is the thing that differs.
-      setGhost((previous) => ({ ...previous, pcs: "" }));
-      if (ghostRef.current) ghostRef.current.focus();
-    }
+    // Focus goes back to the + so a run of lots is a run of Enters, exactly as it
+    // was when the pcs box lived here.
+    if (outcome.ok && addRef.current) addRef.current.focus();
   }, [ghost, kapan.id, onNotify, run]);
 
   const cursor = useSheetCursor({
@@ -151,6 +166,10 @@ const LotSheet = ({
     columnCount: EDITABLE.length,
     onCommitGhost: commitGhost,
   });
+
+  // Lot numbers are never reused, so the next one is one past the highest - the
+  // same rule `nextLotNo` in the model applies, named here for the + button.
+  const nextLotNo = rows.length ? rows[rows.length - 1].lot.lotNo + 1 : 1;
 
   /* ------------------------------------------------------------- editing */
 
@@ -288,6 +307,7 @@ const LotSheet = ({
                 <th
                   key={column.key}
                   style={{ width: column.width }}
+                  title={column.note}
                   className={`${column.align === "num" ? "num" : ""} ${
                     column.key === "lotNo" ? "stick-1" : ""
                   } ${column.key === "lotDate" ? "stick-2" : ""}`}
@@ -346,9 +366,7 @@ const LotSheet = ({
                         <td
                           key={column.key}
                           className={`derived ${column.align === "num" ? "num" : ""} ${
-                            column.key === "ghatPct" && row.derived.ghatPct < 0
-                              ? "is-negative"
-                              : ""
+                            isNegative(column, row.derived) ? "is-negative" : ""
                           }`}
                         >
                           {derivedValue(column, row.derived)}
@@ -375,7 +393,7 @@ const LotSheet = ({
                       <td colSpan={COLUMNS.length + 1}>
                         <PacketMover
                           packets={row.packets}
-                          lots={rows.map((other) => other.lot)}
+                          lots={lotTargets(rows)}
                           currentLotId={row.lot.id}
                           run={run}
                           onConfirm={onConfirm}
@@ -389,13 +407,24 @@ const LotSheet = ({
               );
             })}
 
-            {/* The ghost row. Always present, so adding a lot is never a click. */}
+            {/*
+              The ghost row. Always present, and the + on it is the button that
+              adds the lot - its two cells only carry values the new lot starts
+              with, both of which are optional.
+            */}
             {!readOnly && (
               <tr className="ghost-row">
-                <td className="num stick-1">
-                  <span className="ghost-plus">
-                    <IconPlus size={12} />
-                  </span>
+                <td className="num stick-1 lot-no">
+                  <button
+                    type="button"
+                    ref={addRef}
+                    className="ghost-add"
+                    onClick={commitGhost}
+                    title={`Add lot ${nextLotNo}`}
+                    aria-label={`Add lot ${nextLotNo}`}
+                  >
+                    <IconPlus size={13} />
+                  </button>
                 </td>
                 <td className="stick-2">
                   <input
@@ -412,28 +441,10 @@ const LotSheet = ({
                     aria-label="New lot date"
                   />
                 </td>
-                <td className="num">
-                  <input
-                    ref={(element) => {
-                      ghostRef.current = element;
-                      cursor.registerCell(rows.length, editableIndex("pcs"), element);
-                    }}
-                    className="sheet-input is-primary"
-                    type="text"
-                    inputMode="decimal"
-                    value={ghost.pcs}
-                    placeholder="pcs…"
-                    autoComplete="off"
-                    onChange={(event) =>
-                      setGhost((previous) => ({ ...previous, pcs: event.target.value }))
-                    }
-                    onFocus={() => cursor.setCursorAt(rows.length, editableIndex("pcs"))}
-                    onKeyDown={(event) => cursor.handleKeyDown(event, { fillDown, isGhost: true, undo: onUndo })}
-                    aria-label="New lot pcs"
-                  />
-                </td>
+                <td className="derived num">{BLANK}</td>
                 <td className="derived num">{BLANK}</td>
                 <td className="num">
+                  {/* Not the primary field any more - the + is. Charmi is optional. */}
                   <input
                     className="sheet-input"
                     type="text"
@@ -450,8 +461,8 @@ const LotSheet = ({
                   />
                 </td>
                 <td className="ghost-hint" colSpan={COLUMNS.length - 5 + 1}>
-                  Type the pcs and press Enter to add lot{" "}
-                  {rows.length ? rows[rows.length - 1].lot.lotNo + 1 : 1}
+                  Add lot {nextLotNo} with the + — its નંગ fills in as packets are
+                  scanned into it
                 </td>
               </tr>
             )}
@@ -462,8 +473,9 @@ const LotSheet = ({
                   <div className="empty-state">
                     <strong>No lots in this Kapan yet</strong>
                     <span>
-                      Type a pcs count in the row above and press Enter. Charmi and the
-                      date carry down to the next lot.
+                      Press the + in the row above to add one. Charmi and the date
+                      carry down to the next lot, and each lot's નંગ counts itself up
+                      as packets are scanned into it.
                     </span>
                   </div>
                 </td>
@@ -512,6 +524,9 @@ const LotSheet = ({
         </span>
         <span className="muted">
           Type <code>+12</code> in a return cell to add to what is already there
+        </span>
+        <span className="muted">
+          Each scan adds one to its lot's નંગ — correct it here if it drifts
         </span>
       </p>
     </div>

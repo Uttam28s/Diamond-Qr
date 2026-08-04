@@ -344,6 +344,7 @@ before every delivery; it is the only check that looks at what actually ships.
 | `tools/harden-build.js` | scrubs `build/`; runs as part of `npm run build` |
 | `tools/verify-package.js` | inspects the packaged asar before delivery |
 | `tools/smoke-test.js` | runs the packaged bundle in a real window |
+| `tools/activation-test.js` | activates a fresh PC end to end, through the real main process |
 | `tools/make-icon.js` | draws the app icon at every size |
 | `tools/devtools-secret.js` | hashes a new maintenance word |
 

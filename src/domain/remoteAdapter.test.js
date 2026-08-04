@@ -115,6 +115,9 @@ afterEach(async () => {
    ======================================================================== */
 
 describe("the client and host delta implementations agree", () => {
+  const kapan = { id: "k1" };
+  const scanned = { id: "l1", lotNo: 1, pcs: 142, charmi: -2 };
+
   const cases = [
     [{ schema: 3, kapans: {}, lots: {}, packets: {} }, { schema: 3, kapans: {}, lots: {}, packets: {} }],
     [
@@ -124,6 +127,23 @@ describe("the client and host delta implementations agree", () => {
     [
       { schema: 3, kapans: { k1: { id: "k1" } }, lots: { l1: { id: "l1" } }, packets: {} },
       { schema: 3, kapans: { k1: { id: "k1" } }, lots: {}, packets: { p1: { id: "p1" } } },
+    ],
+    // A scan into a lot: one more packet, and the lot's નંગ one higher. Both
+    // copies have to agree that this is a shift, or a client and its host would
+    // disagree about whether the change may be queued.
+    [
+      { schema: 3, kapans: { k1: kapan }, lots: { l1: scanned }, packets: {} },
+      {
+        schema: 3,
+        kapans: { k1: kapan },
+        lots: { l1: { ...scanned, pcs: 143 } },
+        packets: { p1: { id: "p1", lotId: "l1" } },
+      },
+    ],
+    // Clearing the pcs cell is not a shift, and both have to agree on that too.
+    [
+      { schema: 3, kapans: { k1: kapan }, lots: { l1: scanned }, packets: {} },
+      { schema: 3, kapans: { k1: kapan }, lots: { l1: { ...scanned, pcs: null } }, packets: {} },
     ],
   ];
 
@@ -160,6 +180,34 @@ describe("merging queued deltas", () => {
     ]);
     expect(merged.upserts.packets.p1).toBeUndefined();
     expect(merged.deletes.packets).toEqual(["p1"]);
+  });
+
+  it("adds up the pcs shifts, so twenty queued scans become one +20", () => {
+    const merged = mergeDeltas([
+      { upserts: { kapans: {}, lots: {}, packets: {} }, deletes: {}, counters: { lots: { l1: 1 } } },
+      { upserts: { kapans: {}, lots: {}, packets: {} }, deletes: {}, counters: { lots: { l1: 1, l2: 3 } } },
+    ]);
+    expect(merged.counters.lots).toEqual({ l1: 2, l2: 3 });
+  });
+
+  it("drops a shift for a lot that was later deleted or rewritten", () => {
+    const deleted = mergeDeltas([
+      { upserts: { kapans: {}, lots: {}, packets: {} }, deletes: {}, counters: { lots: { l1: 4 } } },
+      {
+        upserts: { kapans: {}, lots: {}, packets: {} },
+        deletes: { kapans: [], lots: ["l1"], packets: [] },
+      },
+    ]);
+    expect(deleted.counters.lots.l1).toBeUndefined();
+
+    // A whole row carries the count those shifts produced, so replaying them on
+    // top of it would count the same pieces twice.
+    const rewritten = mergeDeltas([
+      { upserts: { kapans: {}, lots: {}, packets: {} }, deletes: {}, counters: { lots: { l1: 4 } } },
+      { upserts: { kapans: {}, lots: { l1: { id: "l1", pcs: 146 } }, packets: {} }, deletes: {} },
+    ]);
+    expect(rewritten.counters.lots.l1).toBeUndefined();
+    expect(rewritten.upserts.lots.l1.pcs).toBe(146);
   });
 
   it("is null for an empty backlog", () => {
@@ -234,7 +282,7 @@ describe("a client against a live host", () => {
     await office.load();
     await office.run((state) => createKapan(state, { number: "41" }));
     const kapanId = kapanByNumber(office.getState(), "41").id;
-    await office.run((state) => createLot(state, kapanId, { pcs: 142 }));
+    await office.run((state) => createLot(state, kapanId, { pcs: 142, charmi: -2 }));
     const lotId = lotsOfKapan(office.getState(), kapanId)[0].id;
 
     // The station loads, then the office edits the same lot underneath it.
@@ -259,6 +307,26 @@ describe("a client against a live host", () => {
    ======================================================================== */
 
 describe("when the host goes away", () => {
+  it("keeps accepting scans INTO A LOT and reports the save as successful", async () => {
+    await startHost();
+
+    const adapter = newAdapter();
+    const store = createStore({ adapter });
+    await store.load();
+    await store.run((state) => createKapan(state, { number: "41" }));
+    const kapanId = kapanByNumber(store.getState(), "41").id;
+    await store.run((state) => createLot(state, kapanId, { charmi: -2 }));
+    const lotId = lotsOfKapan(store.getState(), kapanId)[0].id;
+
+    await stopHost();
+
+    const intoLot = await store.run((state) =>
+      addPacket(state, { kapanId, lotId, kachuWeight: 7.348, polishedWeight: 0.928 })
+    );
+    expect(intoLot.ok).toBe(true);
+    expect(store.getState().lots[lotId].pcs).toBe(1);
+  });
+
   it("keeps accepting scans and reports the save as successful", async () => {
     await startHost();
 
@@ -288,7 +356,7 @@ describe("when the host goes away", () => {
     await store.load();
     await store.run((state) => createKapan(state, { number: "41" }));
     const kapanId = kapanByNumber(store.getState(), "41").id;
-    await store.run((state) => createLot(state, kapanId, { pcs: 142 }));
+    await store.run((state) => createLot(state, kapanId, { pcs: 142, charmi: -2 }));
     const lotId = lotsOfKapan(store.getState(), kapanId)[0].id;
 
     await stopHost();
@@ -332,6 +400,45 @@ describe("when the host goes away", () => {
     expect(adapter.queuedCount()).toBe(0);
     // All three landed on the host, in one request.
     expect(Object.keys(hostStore.getState().packets)).toHaveLength(3);
+  });
+
+  it("carries the pcs it counted while offline up to the host, without clobbering it", async () => {
+    await startHost();
+    const port = new URL(baseUrl).port;
+
+    const storage = memoryStorage();
+    const adapter = newAdapter({ storage });
+    const store = createStore({ adapter });
+    await store.load();
+    await store.run((state) => createKapan(state, { number: "41" }));
+    const kapanId = kapanByNumber(store.getState(), "41").id;
+    await store.run((state) => createLot(state, kapanId, { charmi: -2 }));
+    const lotId = lotsOfKapan(store.getState(), kapanId)[0].id;
+
+    await stopHost();
+
+    // Two scanned into the lot during the outage.
+    for (let index = 0; index < 2; index += 1) {
+      await store.run((state) =>
+        addPacket(state, { kapanId, lotId, kachuWeight: 1 + index, polishedWeight: 0.2 })
+      );
+    }
+    expect(store.getState().lots[lotId].pcs).toBe(2);
+
+    // Meanwhile the office counted three of its own into the same lot.
+    const onHost = hostStore.getState();
+    hostStore.save({
+      ...onHost,
+      lots: { ...onHost.lots, [lotId]: { ...onHost.lots[lotId], pcs: 3 } },
+    });
+
+    host = createServer({ store: hostStore });
+    await host.listen(Number(port), "127.0.0.1");
+    await adapter.flush();
+
+    // Five, not two: the station sent "+2", so neither PC's work was thrown away.
+    expect(hostStore.getState().lots[lotId].pcs).toBe(5);
+    expect(Object.keys(hostStore.getState().packets)).toHaveLength(2);
   });
 
   it("keeps the backlog across an app restart", async () => {

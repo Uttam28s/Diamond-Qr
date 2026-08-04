@@ -209,6 +209,10 @@ async function boot() {
  * to start on a factory floor at seven in the morning.
  */
 async function openData() {
+  // Idempotent. Activation calls this after boot() has already decided not to, and
+  // a second server on the same port would fail with EADDRINUSE.
+  if (dataStore || hostServer) return;
+
   const config = deviceConfig.load(dataDir());
 
   if (config.role === deviceConfig.ROLES.CLIENT) {
@@ -306,9 +310,25 @@ ipcMain.handle("license:status", () => ({
  * Swap the activation screen for the app window. Creates the new window BEFORE
  * closing the old one, otherwise the open-window count hits zero and
  * window-all-closed quits the app mid-activation.
+ *
+ * The `openData()` here is not optional and its absence was a first-run blocker:
+ * boot() opens the database only on the already-licensed path, so a PC that has
+ * just been activated reached this point with no store at all and the app opened
+ * straight onto "This PC has no local database". Restarting it cleared the fault,
+ * which is exactly why it survived - the second launch takes the boot() path.
  */
-function promoteToAppWindow() {
+async function promoteToAppWindow() {
   switchingWindows = true;
+
+  try {
+    await openData();
+  } catch (err) {
+    // Open the window anyway. The renderer has a screen for "the data could not be
+    // opened" that tells the user not to scan and to call support; leaving them
+    // stranded on the activation screen after a successful activation is worse.
+    hostError = hostError || `The database could not be opened: ${err.message}`;
+  }
+
   createMainWindow();
   if (activationWindow && !activationWindow.isDestroyed()) activationWindow.destroy();
   switchingWindows = false;
@@ -324,7 +344,11 @@ ipcMain.handle("license:activate", async (event, licenseKey) => {
   // while its reply is still in flight leaves the caller's promise unresolved, so
   // the "Activated..." confirmation would never appear. The short delay also lets
   // the user actually read it.
-  setTimeout(promoteToAppWindow, 900);
+  setTimeout(() => {
+    promoteToAppWindow().catch((err) => {
+      console.error("[boot] could not open the app window after activation:", err);
+    });
+  }, 900);
 
   return result;
 });

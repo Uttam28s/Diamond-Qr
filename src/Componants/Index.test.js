@@ -52,21 +52,23 @@ const createKapan = async (number = "41", season = "25-26") => {
   await screen.findByRole("button", { name: /All Kapans/i });
 };
 
-/**
- * Types a pcs value into the ghost row and presses Enter.
- *
- * Waits for the pcs box to be empty first, which is what a person does without
- * thinking - they see the field clear before typing the next number.
- */
-const addLot = async (pcs, charmi) => {
-  await waitFor(() => expect(screen.getByLabelText("New lot pcs")).toHaveValue(""));
+/** The + on the ghost row, whatever number it is offering to add. */
+const addButton = () => screen.getByLabelText(/^Add lot \d+$/);
 
+/**
+ * Adds a lot by pressing the + on the ghost row, optionally setting the charmi the
+ * new lot starts with.
+ *
+ * Nothing else has to be typed: the lot's નંગ counts itself up as its packets are
+ * scanned in, so the + is the whole interaction.
+ */
+const addLot = async (charmi) => {
   if (charmi !== undefined) {
     const charmiField = screen.getByLabelText("New lot charmi");
     await userEvent.clear(charmiField);
     await userEvent.type(charmiField, `${charmi}`);
   }
-  await userEvent.type(screen.getByLabelText("New lot pcs"), `${pcs}{enter}`);
+  await userEvent.click(addButton());
 };
 
 /**
@@ -100,39 +102,51 @@ describe("creating a Kapan", () => {
 });
 
 describe("the ghost row", () => {
-  it("adds a lot from one number and one Enter", async () => {
+  it("adds a lot on one press of the +", async () => {
     await createKapan("41");
 
-    await addLot(142, -2);
+    await addLot(-2);
 
     const row = await waitFor(() => lotRow(1));
-    expect(within(row).getByLabelText("Lot 1 pcs")).toHaveValue("142");
     expect(within(row).getByLabelText("Lot 1 charmi")).toHaveValue("-2");
+    // Nothing had to be typed to get here - and no pcs was asked for, because a
+    // lot's નંગ counts itself up as its packets are scanned in.
+    expect(within(row).getByLabelText("Lot 1 pcs")).toHaveValue("");
+    expect(screen.queryByLabelText("New lot pcs")).not.toBeInTheDocument();
   });
 
-  it("keeps the cursor in place so a run of lots is a run of Enters", async () => {
+  it("keeps focus on the + so a run of lots is a run of presses", async () => {
     await createKapan("41");
 
-    await addLot(142, -2);
+    await addLot(-2);
     await waitFor(() => lotRow(1));
-    await addLot(140);
+    await addLot();
     await waitFor(() => lotRow(2));
-    await addLot(161);
+    await addLot();
     await waitFor(() => lotRow(3));
 
     expect(screen.getByText("3 lots")).toBeInTheDocument();
     // Charmi carried down to every row without being retyped.
     expect(within(lotRow(2)).getByLabelText("Lot 2 charmi")).toHaveValue("-2");
     expect(within(lotRow(3)).getByLabelText("Lot 3 charmi")).toHaveValue("-2");
-    // Focus never left the pcs box.
-    expect(screen.getByLabelText("New lot pcs")).toHaveFocus();
+    // And the + is still under the finger, now offering lot 4.
+    expect(screen.getByLabelText("Add lot 4")).toHaveFocus();
+  });
+
+  it("adds a lot on Enter from a ghost cell too, for the keyboard", async () => {
+    await createKapan("41");
+
+    await userEvent.type(screen.getByLabelText("New lot charmi"), "-2{enter}");
+
+    const row = await waitFor(() => lotRow(1));
+    expect(within(row).getByLabelText("Lot 1 charmi")).toHaveValue("-2");
   });
 
   it("gives each new lot today's date", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot();
 
-    const row = await waitFor(() => lotRow(1));
+    await waitFor(() => lotRow(1));
     // Shown as dd-mm-yyyy while resting, the way the workbook writes it.
     const now = new Date();
     const dmy = [
@@ -140,19 +154,14 @@ describe("the ghost row", () => {
       `${now.getMonth() + 1}`.padStart(2, "0"),
       now.getFullYear(),
     ].join("-");
-    expect(within(row).getByLabelText("Lot 1 date")).toHaveValue(dmy);
+    await waitFor(() =>
+      expect(within(lotRow(1)).getByLabelText("Lot 1 date")).toHaveValue(dmy)
+    );
   });
 
-  it("does nothing on Enter with an empty row", async () => {
+  it("refuses a fractional charmi with a message, and adds nothing", async () => {
     await createKapan("41");
-    await userEvent.type(screen.getByLabelText("New lot pcs"), "{enter}");
-
-    expect(screen.getByText(/No lots in this Kapan yet/i)).toBeInTheDocument();
-  });
-
-  it("rejects a fractional pcs count with a message", async () => {
-    await createKapan("41");
-    await addLot("142.5");
+    await addLot("2.5");
 
     expect(await screen.findByText(/whole number/i)).toBeInTheDocument();
     expect(screen.getByText(/No lots in this Kapan yet/i)).toBeInTheDocument();
@@ -160,26 +169,27 @@ describe("the ghost row", () => {
 });
 
 describe("editing cells", () => {
-  it("recalculates the derived columns as soon as a return is entered", async () => {
+  it("does not divide by a lot with nothing scanned into it", async () => {
     await createKapan("41");
-    await addLot(142, -2);
+    await addLot(-2);
     const row = await waitFor(() => lotRow(1));
 
-    // No packets scanned yet, so rough is zero and the percentages stay at zero -
-    // entering a return must not divide by it.
     await userEvent.type(within(row).getByLabelText("Lot 1 return pcs"), "142");
     await userEvent.tab();
 
     await waitFor(() =>
       expect(within(lotRow(1)).getByLabelText("Lot 1 return pcs")).toHaveValue("142")
     );
-    // બા. નંગ = 142 - 142
-    expect(within(lotRow(1)).getAllByText("0").length).toBeGreaterThan(0);
+    // No pcs and no packets, so there is nothing to be a percentage of - the
+    // percentages stay at zero instead of dividing by a zero rough weight, and the
+    // row says plainly that returns arrived against a lot with no pcs.
+    expect(within(lotRow(1)).getAllByText("0.00").length).toBeGreaterThan(0);
+    expect(lotRow(1).className).toMatch(/has-warning/);
   });
 
   it("adds with +N instead of replacing", async () => {
     await createKapan("41");
-    await addLot(142, -2);
+    await addLot(-2);
     const row = await waitFor(() => lotRow(1));
 
     const returnPcs = within(row).getByLabelText("Lot 1 return pcs");
@@ -201,7 +211,7 @@ describe("editing cells", () => {
 
   it("sets a negative charmi rather than subtracting", async () => {
     await createKapan("41");
-    await addLot(142, 2);
+    await addLot(2);
     const row = await waitFor(() => lotRow(1));
 
     const charmi = within(row).getByLabelText("Lot 1 charmi");
@@ -216,7 +226,7 @@ describe("editing cells", () => {
 
   it("takes a typed date shorthand", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot();
     const row = await waitFor(() => lotRow(1));
 
     const date = within(row).getByLabelText("Lot 1 date");
@@ -231,17 +241,34 @@ describe("editing cells", () => {
     );
   });
 
-  it("reverts a cell on Escape", async () => {
+  it("takes a pcs count typed by hand", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot(-2);
     const row = await waitFor(() => lotRow(1));
 
+    // Nothing scanned yet, so the cell is empty until either a scan lands or the
+    // paper slip's figure is typed in.
     const pcs = within(row).getByLabelText("Lot 1 pcs");
-    await userEvent.clear(pcs);
-    await userEvent.type(pcs, "999{escape}");
+    expect(pcs).toHaveValue("");
+    await userEvent.type(pcs, "142");
+    await userEvent.tab();
 
     await waitFor(() =>
       expect(within(lotRow(1)).getByLabelText("Lot 1 pcs")).toHaveValue("142")
+    );
+  });
+
+  it("reverts a cell on Escape", async () => {
+    await createKapan("41");
+    await addLot(-2);
+    const row = await waitFor(() => lotRow(1));
+
+    const charmi = within(row).getByLabelText("Lot 1 charmi");
+    await userEvent.clear(charmi);
+    await userEvent.type(charmi, "999{escape}");
+
+    await waitFor(() =>
+      expect(within(lotRow(1)).getByLabelText("Lot 1 charmi")).toHaveValue("-2")
     );
   });
 });
@@ -249,7 +276,7 @@ describe("editing cells", () => {
 describe("deleting a lot", () => {
   it("goes in one click and comes back with Undo", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot();
     await waitFor(() => lotRow(1));
 
     await userEvent.click(screen.getByTitle(/Delete lot 1/i));
@@ -266,11 +293,11 @@ describe("deleting a lot", () => {
 
   it("leaves a gap in the numbering, and Renumber closes it", async () => {
     await createKapan("41");
-    await addLot(100);
+    await addLot(-2);
     await waitFor(() => lotRow(1));
-    await addLot(200);
+    await addLot(2);
     await waitFor(() => lotRow(2));
-    await addLot(300);
+    await addLot(7);
     await waitFor(() => lotRow(3));
 
     await userEvent.click(screen.getByTitle(/Delete lot 2/i));
@@ -282,14 +309,14 @@ describe("deleting a lot", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Renumber/i }));
     await waitFor(() => expect(lotRow(2)).toBeTruthy());
-    expect(within(lotRow(2)).getByLabelText("Lot 2 pcs")).toHaveValue("300");
+    expect(within(lotRow(2)).getByLabelText("Lot 2 charmi")).toHaveValue("7");
   });
 });
 
 describe("the Kapan list", () => {
   it("shows each Kapan with its figures and a season total", async () => {
     await createKapan("41", "25-26");
-    await addLot(142);
+    await addLot();
     await waitFor(() => lotRow(1));
 
     await userEvent.click(screen.getByRole("button", { name: /All Kapans/i }));
@@ -312,7 +339,7 @@ describe("the Kapan list", () => {
 describe("deleting a Kapan", () => {
   it("requires the number typed out, then undoes", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot();
     await waitFor(() => lotRow(1));
 
     await userEvent.click(screen.getByRole("button", { name: /^Delete$/i }));
@@ -358,7 +385,7 @@ describe("choosing the lot to scan into", () => {
 
   it("opens the picker on Ctrl+L from any screen", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot();
     await waitFor(() => lotRow(1));
 
     // Still on the Kapans screen - the shortcut is global on purpose.
@@ -369,7 +396,7 @@ describe("choosing the lot to scan into", () => {
 
   it("picks a lot with the keyboard and shows it on the scan screen", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot();
     await waitFor(() => lotRow(1));
 
     await userEvent.keyboard("{ctrl}l{/ctrl}");
@@ -383,7 +410,7 @@ describe("choosing the lot to scan into", () => {
 
   it("filters to nothing rather than guessing", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot();
     await waitFor(() => lotRow(1));
 
     await userEvent.keyboard("{ctrl}l{/ctrl}");
@@ -404,7 +431,7 @@ describe("saving a session into a lot", () => {
 
   it("goes straight in with no dialog, and the sheet picks up the weights", async () => {
     await createKapan("41");
-    await addLot(142, -2);
+    await addLot(-2);
     await waitFor(() => lotRow(1));
     await pickLotOne();
 
@@ -423,9 +450,61 @@ describe("saving a session into a lot", () => {
     expect(within(row).getAllByText("12.63")).toHaveLength(2);
   });
 
+  it("counts each scanned packet into the lot's pcs", async () => {
+    await createKapan("41");
+    await addLot(-2);
+    await waitFor(() => lotRow(1));
+    await pickLotOne();
+
+    // Three packets, so three diamonds - one each.
+    await scan(2.0, 0.4);
+    await scan(3.0, 0.6);
+    await scan(1.0, 0.2);
+    await userEvent.click(screen.getByRole("button", { name: /Save to lot 1/i }));
+
+    await openKapansTab();
+    await waitFor(() =>
+      expect(within(lotRow(1)).getByLabelText("Lot 1 pcs")).toHaveValue("3")
+    );
+    // બા. નંગ agrees, because it is computed from that same figure.
+    expect(within(lotRow(1)).getByText("3")).toBeInTheDocument();
+
+    // Enter those three back and nothing is outstanding or amiss.
+    await userEvent.type(within(lotRow(1)).getByLabelText("Lot 1 return pcs"), "3");
+    await userEvent.tab();
+
+    await waitFor(() =>
+      expect(within(lotRow(1)).getByLabelText("Lot 1 return pcs")).toHaveValue("3")
+    );
+    expect(lotRow(1).className).not.toMatch(/has-warning/);
+  });
+
+  it("adds a scan on top of a pcs figure already typed in", async () => {
+    await createKapan("41");
+    await addLot(-2);
+    const row = await waitFor(() => lotRow(1));
+
+    // The paper slip said 140 before anything was scanned.
+    await userEvent.type(within(row).getByLabelText("Lot 1 pcs"), "140");
+    await userEvent.tab();
+    await waitFor(() =>
+      expect(within(lotRow(1)).getByLabelText("Lot 1 pcs")).toHaveValue("140")
+    );
+
+    await pickLotOne();
+    await scan(2.0, 0.4);
+    await scan(3.0, 0.6);
+    await userEvent.click(screen.getByRole("button", { name: /Save to lot 1/i }));
+
+    await openKapansTab();
+    await waitFor(() =>
+      expect(within(lotRow(1)).getByLabelText("Lot 1 pcs")).toHaveValue("142")
+    );
+  });
+
   it("keeps scanning possible with no lot, holding packets out of the totals", async () => {
     await createKapan("41");
-    await addLot(142, -2);
+    await addLot(-2);
     await waitFor(() => lotRow(1));
 
     await goToScan();
@@ -445,7 +524,7 @@ describe("saving a session into a lot", () => {
 
   it("files a tray packet into a lot, and the totals move with it", async () => {
     await createKapan("41");
-    await addLot(142, -2);
+    await addLot(-2);
     await waitFor(() => lotRow(1));
 
     await goToScan();
@@ -484,12 +563,12 @@ describe("saving a session into a lot", () => {
 describe("keyboard shortcuts", () => {
   it("Ctrl+Z undoes the last change from inside the sheet", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot();
     await waitFor(() => lotRow(1));
 
     // Focus is always inside a cell input in this grid, so the window-level
     // binding would never see this - the cell handles it.
-    await userEvent.click(within(lotRow(1)).getByLabelText("Lot 1 pcs"));
+    await userEvent.click(within(lotRow(1)).getByLabelText("Lot 1 charmi"));
     await userEvent.keyboard("{ctrl}z{/ctrl}");
 
     await waitFor(() =>
@@ -499,18 +578,18 @@ describe("keyboard shortcuts", () => {
 
   it("Ctrl+Z in a half-typed cell reverts the typing instead", async () => {
     await createKapan("41");
-    await addLot(142);
+    await addLot(-2);
     await waitFor(() => lotRow(1));
 
-    const pcs = within(lotRow(1)).getByLabelText("Lot 1 pcs");
-    await userEvent.clear(pcs);
-    await userEvent.type(pcs, "999");
+    const charmi = within(lotRow(1)).getByLabelText("Lot 1 charmi");
+    await userEvent.clear(charmi);
+    await userEvent.type(charmi, "999");
     await userEvent.keyboard("{ctrl}z{/ctrl}");
 
-    // The cell goes back to 142 and the lot is still there - the change was
+    // The cell goes back to -2 and the lot is still there - the change was
     // never committed, so there was nothing at the data level to undo.
     await waitFor(() =>
-      expect(within(lotRow(1)).getByLabelText("Lot 1 pcs")).toHaveValue("142")
+      expect(within(lotRow(1)).getByLabelText("Lot 1 charmi")).toHaveValue("-2")
     );
   });
 

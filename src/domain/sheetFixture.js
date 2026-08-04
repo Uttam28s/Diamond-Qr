@@ -76,6 +76,12 @@ export const SHEET_HEADER = {
  * weight come from its packets, so each row becomes one lot plus one packet
  * carrying that row's two weights - the arithmetic under test is the same
  * whether those carats arrived as one packet or twenty.
+ *
+ * The lot carries the row's printed નંગ. In the app that figure counts itself up
+ * as packets are scanned in, but it is a stored column either way, and what these
+ * tests check is that the eight formulas built on it reproduce the workbook - so
+ * the fixture states it outright rather than minting 142 packets to imply it.
+ * That the counting itself works is `operations.test.js`'s job.
  */
 export const buildFixture = (rows = SHEET_ROWS) => {
   const lots = rows.map((row) => ({

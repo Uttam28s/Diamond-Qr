@@ -21,7 +21,7 @@ const seed = (count = 3) => {
   const kapanId = kapanByNumber(state, "41").id;
 
   for (let index = 0; index < count; index += 1) {
-    state = createLot(state, kapanId, { pcs: 100 + index, charmi: -2 }).state;
+    state = createLot(state, kapanId, { charmi: -2 }).state;
   }
 
   lotsOfKapan(state, kapanId).forEach((lot, index) => {
@@ -110,7 +110,7 @@ describe("lots", () => {
     const afterDelete = deleteLot(state, lots[1].id).state;
     expect(lotsOfKapan(afterDelete, kapanId).map((lot) => lot.lotNo)).toEqual([1, 3]);
 
-    const afterAdd = createLot(afterDelete, kapanId, { pcs: 50 }).state;
+    const afterAdd = createLot(afterDelete, kapanId, {}).state;
     expect(lotsOfKapan(afterAdd, kapanId).map((lot) => lot.lotNo)).toEqual([1, 3, 4]);
   });
 
@@ -231,7 +231,7 @@ describe("moving packets between lots", () => {
     let { state, kapanId } = seed(1);
     state = createKapan(state, { number: "42" }).state;
     const otherKapan = kapanByNumber(state, "42");
-    state = createLot(state, otherKapan.id, { pcs: 10 }).state;
+    state = createLot(state, otherKapan.id, {}).state;
     const foreignLot = lotsOfKapan(state, otherKapan.id)[0];
     const packet = packetsOfLot(state, lotsOfKapan(state, kapanId)[0].id)[0];
 
@@ -289,13 +289,156 @@ describe("packets", () => {
   });
 });
 
+/* ========================================================================
+   નંગ counts itself. One packet holds one diamond, so filing a scan into a lot
+   is what puts a piece into its count - but the column stays typed, so the two
+   have to compose rather than one overwriting the other.
+   ======================================================================== */
+
+describe("pcs follows the packets", () => {
+  /** A Kapan with one empty lot and nothing scanned anywhere. */
+  const empty = () => {
+    let state = createKapan(emptyState(), { number: "41" }).state;
+    const kapanId = kapanByNumber(state, "41").id;
+    state = createLot(state, kapanId, { charmi: -2 }).state;
+    return { state, kapanId, lotId: lotsOfKapan(state, kapanId)[0].id };
+  };
+
+  const scan = (state, kapanId, lotId) =>
+    addPacket(state, { kapanId, lotId, kachuWeight: 1, polishedWeight: 0.2 });
+
+  it("a new lot starts with no pcs, and the first scan makes it 1", () => {
+    const { state, kapanId, lotId } = empty();
+    expect(state.lots[lotId].pcs).toBeNull();
+
+    const after = scan(state, kapanId, lotId).state;
+    expect(after.lots[lotId].pcs).toBe(1);
+  });
+
+  it("adds to a figure typed by hand rather than replacing it", () => {
+    // A lot written up from the paper slip before anyone scanned it.
+    let { state, kapanId, lotId } = empty();
+    state = updateLot(state, lotId, { pcs: 140 }).state;
+
+    state = scan(state, kapanId, lotId).state;
+    state = scan(state, kapanId, lotId).state;
+
+    expect(state.lots[lotId].pcs).toBe(142);
+  });
+
+  it("counts a scan against nothing when it lands in the tray", () => {
+    const { state, kapanId, lotId } = empty();
+    const after = scan(state, kapanId, null).state;
+    expect(after.lots[lotId].pcs).toBeNull();
+  });
+
+  it("undoing a scan takes its piece back out of the count", () => {
+    let { state, kapanId, lotId } = empty();
+    state = updateLot(state, lotId, { pcs: 5 }).state;
+
+    const { state: after, undo } = scan(state, kapanId, lotId);
+    expect(after.lots[lotId].pcs).toBe(6);
+    expect(undo.apply(after).lots[lotId].pcs).toBe(5);
+  });
+
+  it("moves a piece between lots when its packet moves", () => {
+    let state = createKapan(emptyState(), { number: "41" }).state;
+    const kapanId = kapanByNumber(state, "41").id;
+    state = createLot(state, kapanId, {}).state;
+    state = createLot(state, kapanId, {}).state;
+    const [lotA, lotB] = lotsOfKapan(state, kapanId);
+
+    state = scan(state, kapanId, lotA.id).state;
+    state = scan(state, kapanId, lotA.id).state;
+    expect(state.lots[lotA.id].pcs).toBe(2);
+
+    const packetId = packetsOfLot(state, lotA.id)[0].id;
+    const { state: moved, undo } = movePackets(state, [packetId], lotB.id);
+
+    expect(moved.lots[lotA.id].pcs).toBe(1);
+    expect(moved.lots[lotB.id].pcs).toBe(1);
+
+    // And back again, both counts together.
+    const back = undo.apply(moved);
+    expect(back.lots[lotA.id].pcs).toBe(2);
+    expect(back.lots[lotB.id].pcs).toBeNull();
+  });
+
+  it("takes a piece out of the count when its packet goes to the tray", () => {
+    const { state, kapanId, lotId } = empty();
+    const scanned = scan(state, kapanId, lotId).state;
+    const packetId = Object.keys(scanned.packets)[0];
+
+    const moved = movePackets(scanned, [packetId], null).state;
+    expect(moved.lots[lotId].pcs).toBe(0);
+  });
+
+  it("takes a piece out of the count when its packet is deleted", () => {
+    let { state, kapanId, lotId } = empty();
+    state = updateLot(state, lotId, { pcs: 100 }).state;
+    state = scan(state, kapanId, lotId).state;
+    expect(state.lots[lotId].pcs).toBe(101);
+
+    const packetId = Object.keys(state.packets)[0];
+    const { state: after, undo } = deletePackets(state, [packetId]);
+
+    // A mis-scan deleted must not leave the નંગ one too high for ever.
+    expect(after.lots[lotId].pcs).toBe(100);
+    expect(undo.apply(after).lots[lotId].pcs).toBe(101);
+  });
+
+  it("never counts below zero, however the figures were edited", () => {
+    let { state, kapanId, lotId } = empty();
+    state = scan(state, kapanId, lotId).state;
+    // Someone zeroes the cell by hand, then the mis-scan is deleted.
+    state = updateLot(state, lotId, { pcs: 0 }).state;
+
+    const after = deletePackets(state, Object.keys(state.packets)).state;
+    expect(after.lots[lotId].pcs).toBe(0);
+  });
+
+  /**
+   * Load-bearing, and easy to break by adding one line to `shiftPcs`: a scan must
+   * change nothing on the lot row but its pcs.
+   *
+   * That is what `computeDelta` looks for when it decides to send the change as a
+   * shift rather than as a row - and only a shift may be queued while the host is
+   * unreachable. Bump `updatedAt` here and scanning into a lot stops working the
+   * moment the office PC goes off, on the far side of a delta the sheet never
+   * mentions.
+   */
+  it("changes nothing on the lot row but its pcs", () => {
+    const { state, kapanId, lotId } = empty();
+    const before = state.lots[lotId];
+
+    const after = scan(state, kapanId, lotId).state.lots[lotId];
+
+    expect(Object.keys(after)).toEqual(Object.keys(before));
+    Object.keys(before).forEach((key) => {
+      if (key === "pcs") return;
+      expect(after[key]).toBe(before[key]);
+    });
+  });
+
+  it("leaves a cleared cell cleared when a packet leaves the lot", () => {
+    let { state, kapanId, lotId } = empty();
+    state = scan(state, kapanId, lotId).state;
+    // Clearing the cell says "nobody has given this figure", which the loss report
+    // reads differently from a zero - so losing a packet must not invent one.
+    state = updateLot(state, lotId, { pcs: null }).state;
+
+    const after = deletePackets(state, Object.keys(state.packets)).state;
+    expect(after.lots[lotId].pcs).toBeNull();
+  });
+});
+
 describe("operations never mutate the state handed to them", () => {
   it("leaves the original object untouched", () => {
     const { state, kapanId } = seed(2);
     const snapshot = JSON.stringify(state);
     const lot = lotsOfKapan(state, kapanId)[0];
 
-    createLot(state, kapanId, { pcs: 1 });
+    createLot(state, kapanId, {});
     updateLot(state, lot.id, { pcs: 2 });
     deleteLot(state, lot.id);
     deleteKapan(state, kapanId);

@@ -17,6 +17,7 @@
     "electron": "electron .",
     "dist": "npm run build && electron-builder",
     "smoke": "electron tools/smoke-test.js",
+    "test:activation": "electron tools/activation-test.js",
     "verify:package": "node tools/verify-package.js",
     "devtools:secret": "node tools/devtools-secret.js",
     "license:keygen": "node tools/generate-keypair.js",

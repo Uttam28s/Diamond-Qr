@@ -35,8 +35,9 @@ const build = () => {
 
   const k41 = kapanByNumber(state, "41").id;
 
-  state = createLot(state, k41, { pcs: 142, charmi: -2 }).state;
-  state = createLot(state, k41, { pcs: 140, charmi: -2 }).state;
+  state = createLot(state, k41, { charmi: -2 }).state;
+  state = createLot(state, k41, { charmi: -2 }).state;
+  state = createLot(state, k41, { charmi: 2 }).state; // never scanned into
 
   const [lotA, lotB] = lotsOfKapan(state, k41);
 
@@ -68,7 +69,7 @@ describe("selectKapanView", () => {
   const view = selectKapanView(state, k41);
 
   it("returns lot rows in sheet order with their derived figures", () => {
-    expect(view.rows.map((row) => row.lot.lotNo)).toEqual([1, 2]);
+    expect(view.rows.map((row) => row.lot.lotNo)).toEqual([1, 2, 3]);
     expect(round(view.rows[0].derived.polishedPct, 2)).toBe(12.63);
     expect(round(view.rows[1].derived.polishedPct, 2)).toBe(10.14);
   });
@@ -83,21 +84,27 @@ describe("selectKapanView", () => {
     expect(view.rows[0].warnings).toEqual([]);
   });
 
-  it("flags a lot whose date was cleared, or that has no pcs", () => {
+  it("flags a lot whose date was cleared", () => {
     const cleared = {
       ...state,
       lots: {
         ...state.lots,
-        [view.rows[0].lot.id]: {
-          ...view.rows[0].lot,
-          lotDate: null,
-          pcs: null,
-        },
+        [view.rows[0].lot.id]: { ...view.rows[0].lot, lotDate: null },
       },
     };
-    const warnings = selectKapanView(cleared, k41).rows[0].warnings;
-    expect(warnings).toContain("No lot date");
-    expect(warnings).toContain("No pcs entered");
+    expect(selectKapanView(cleared, k41).rows[0].warnings).toContain("No lot date");
+  });
+
+  it("counts each scanned packet into its lot's pcs", () => {
+    // Nothing was typed into the pcs cells; one packet went into each of the first
+    // two lots, and the third was never scanned into.
+    expect(view.rows.map((row) => row.derived.pcs)).toEqual([1, 1, null]);
+  });
+
+  it("does NOT flag a lot with no pcs yet", () => {
+    // The normal state of a lot between creating it and scanning its packets, so
+    // striping it amber would teach everyone to ignore the stripe.
+    expect(view.rows[2].warnings).toEqual([]);
   });
 
   it("flags returns that cannot be right", () => {
@@ -113,7 +120,19 @@ describe("selectKapanView", () => {
       },
     };
     const warnings = selectKapanView(impossible, k41).rows[0].warnings;
-    expect(warnings.join(" ")).toMatch(/More pcs returned/);
+    expect(warnings.join(" ")).toMatch(/More pcs returned \(150\) than went out \(142\)/);
+  });
+
+  it("says so plainly when returns arrive against a lot with no pcs", () => {
+    const orphan = {
+      ...state,
+      lots: {
+        ...state.lots,
+        [view.rows[2].lot.id]: { ...view.rows[2].lot, returnPcs: 139 },
+      },
+    };
+    const warnings = selectKapanView(orphan, k41).rows[2].warnings;
+    expect(warnings.join(" ")).toMatch(/no pcs against it/);
   });
 
   it("does NOT flag a return heavier than the polished weight", () => {

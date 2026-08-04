@@ -91,7 +91,11 @@ export const packetTotals = (packets = []) => {
 export const lotTotals = (lot = {}, packets = []) => {
   const { count, kachuWeight, polishedWeight } = packetTotals(packets);
 
-  const pcs = toOptionalNumber(lot.pcs); // નંગ
+  // નંગ. Typed, and still correctable by hand - but one packet holds one diamond,
+  // so every scan filed into a lot counts itself into this figure as it arrives
+  // (see `addPacket` in operations.js). `null` still means nobody has said yet,
+  // which the loss report needs to tell apart from a lot that went out empty.
+  const pcs = toOptionalNumber(lot.pcs);
   const returnPcs = toOptionalNumber(lot.returnPcs); // જ. નંગ
   const returnWeight = toOptionalNumber(lot.returnWeight); // જ.વજન
 

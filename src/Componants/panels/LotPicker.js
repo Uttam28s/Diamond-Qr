@@ -149,7 +149,7 @@ const LotPicker = ({ kapanRows, activeLotId, mode = "scan", onCancel, onPick }) 
               <span className="picker-meta">
                 {option.lot
                   ? option.lot.pcs === null
-                    ? "no pcs"
+                    ? "no pcs yet"
                     : `${option.lot.pcs} pcs`
                   : option.kapan.season}
               </span>

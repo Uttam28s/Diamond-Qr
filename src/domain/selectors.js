@@ -10,6 +10,7 @@ import {
   groupPacketsByLot,
   kapanTotals,
   lotTotals,
+  packetTotals,
   rollupKapanTotals,
 } from "./totals";
 import { lotWarnings } from "./model";
@@ -23,6 +24,23 @@ export const KAPAN_SORTS = [
 ];
 
 export const ALL_SEASONS = "__all__";
+
+/**
+ * A lot as the pickers and the move dropdown want it: the stored row, plus the one
+ * figure on those lists that a stored row does not carry.
+ *
+ * They label a lot with its pcs and its rough weight. Pcs is on the row; વજન is the
+ * sum of the lot's packets and has to be worked out, so a picker handed bare lots
+ * printed 0.000 ct against every one of them.
+ */
+const asTarget = (lot, packets = []) => ({
+  ...lot,
+  roughWeight: packetTotals(packets).kachuWeight,
+});
+
+/** The same, from rows that have already been through `lotTotals`. */
+export const lotTargets = (rows = []) =>
+  rows.map((row) => ({ ...row.lot, roughWeight: row.derived.kachuWeight }));
 
 /* -------------------------------------------------------------- one Kapan */
 
@@ -57,6 +75,8 @@ export const selectKapanView = (state, kapanId) => {
     kapan,
     totals: kapanTotals(lots, byLot, unassigned),
     rows,
+    // The same lots again, shaped for the move dropdown in the unassigned tray.
+    lots: lotTargets(rows),
     unassigned: unassigned.sort(
       (a, b) => new Date(a.scannedAt) - new Date(b.scannedAt)
     ),
@@ -78,7 +98,11 @@ const buildKapanRow = (state, kapan) => {
   );
   const { byLot, unassigned } = groupPacketsByLot(packets);
 
-  return { kapan, lots, totals: kapanTotals(lots, byLot, unassigned) };
+  return {
+    kapan,
+    lots: lots.map((lot) => asTarget(lot, byLot[lot.id] || [])),
+    totals: kapanTotals(lots, byLot, unassigned),
+  };
 };
 
 const sortKapanRows = (rows, sort) => {

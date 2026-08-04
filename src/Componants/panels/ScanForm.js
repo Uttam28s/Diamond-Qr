@@ -31,6 +31,7 @@ const ScanForm = ({
   totals,
   recordCount,
   onSaveClick,
+  saveLabel = "Save Records",
 }) => (
   <section className="scan-form" aria-label="Scan packet">
     <label className="field-label" htmlFor="scan-code">
@@ -106,10 +107,10 @@ const ScanForm = ({
       className="button primary wide"
       disabled={!recordCount}
       onClick={onSaveClick}
-      title={recordCount ? "Save this session to a Kapan" : "Scan a packet first"}
+      title={recordCount ? "Save this session" : "Scan a packet first"}
     >
       <IconSave size={18} />
-      Save Records
+      {saveLabel}
     </button>
   </section>
 );

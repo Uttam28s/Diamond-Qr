@@ -29,7 +29,7 @@
   "build": {
     "appId": "com.zeonlabs.qr-code-raj",
     "productName": "Raj-QR-CODE-SCANNER",
-    "copyright": "Copyright © 2020 Uttam",
+    "copyright": "Copyright \u00a9 2020 Uttam",
     "mac": {
       "category": "public.app-category.utilities"
     },
@@ -44,6 +44,11 @@
       "build/**/*",
       "public/electron.js",
       "public/license-preload.js",
+      "public/data-preload.js",
+      "public/shared/**/*",
+      "public/db/**/*",
+      "public/net/**/*",
+      "public/main/**/*",
       "public/activation.html",
       "public/splash.html",
       "public/license/**/*",

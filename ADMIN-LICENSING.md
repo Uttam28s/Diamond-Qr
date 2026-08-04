@@ -90,6 +90,7 @@ Options:
 | `--to "<name>"` | who it is for; recorded in the licence |
 | `--id "<id>"` | your reference id (default `AUTO-0001`) |
 | `--expires 2027-03-31` | optional expiry. **Omit for a perpetual licence.** |
+| `--seats 4` | how many PCs may share this customer's data. **Omit for unlimited.** |
 
 Every key you issue is logged to `tools/issued/licenses.json` (gitignored) with the
 customer name and the machine it is bound to. Keep this - it is your record of who
@@ -129,6 +130,40 @@ Things worth having ready before you hand it over:
   "Windows protected your PC". The customer must click *More info* -> *Run anyway*.
   Warn them in advance, or it looks like a virus warning. See section 7 for signing.
 - If the customer has more than one PC, each needs its own code and its own key.
+
+---
+
+## 3b. Customers with several PCs (seats)
+
+Each PC still gets its own code and its own key - that has not changed, and it is
+still what binds a licence to one machine.
+
+What `--seats` adds is a cap on how many PCs may **share one database**. One PC is
+set up as the host in its Settings; the others connect to it over the office LAN.
+The host counts the computers that connect and refuses the one past the cap.
+
+```bash
+# A four-PC office: the office PC plus three scan stations.
+npm run license:issue -- --request "<host PC's code>" --to "Raj Diamond" --seats 4
+```
+
+Points worth knowing:
+
+- **The count includes the host itself.** `--seats 4` means four computers in total.
+- **Only the host's key matters** for the cap. It is the machine doing the counting.
+  The clients' own keys license those installs; they do not carry a seat count.
+- **Omitting `--seats` means unlimited**, and so does every key you issued before
+  this option existed. An update must never stop a current customer working, so a
+  key with no seat count is read as "no limit" rather than "no seats".
+- The number is inside the signature. Editing anything on the customer's disk cannot
+  raise it - the key stops verifying.
+- The host shows seats in use in **Settings -> This computer**, along with the
+  address to type into the other PCs and a list of what is connected.
+- To sell a customer more seats, issue a fresh key for the **host** with a higher
+  `--seats` and have them paste it. Nothing else changes.
+
+`npm run license:verify -- "<key>"` prints the seat count, so you can check what a
+customer already has before quoting them more.
 
 ## 4. What the customer sees when a copy is stolen
 

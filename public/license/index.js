@@ -71,6 +71,25 @@ function inspect(licenseKey, current) {
 }
 
 /**
+ * Seat count from an already-verified payload: how many computers may connect
+ * when this PC is the host.
+ *
+ * 0 means unlimited, and so does a missing or unreadable value. Failing open is
+ * deliberate -- every key issued before seats existed has no such field, and the
+ * alternative is that installing an update stops the app working for every
+ * customer already using it. The protection that actually matters, the key being
+ * bound to one machine, is untouched by this.
+ *
+ * Only ever read from a payload that decodeLicense has verified, so the number
+ * cannot be raised by editing anything on the customer's disk.
+ */
+function seatsFrom(payload) {
+  const seats = Number(payload && payload.seats);
+  if (!Number.isFinite(seats) || seats <= 0) return 0;
+  return Math.floor(seats);
+}
+
+/**
  * Full startup evaluation. `state` drives which window the app opens:
  *   "licensed"    -> load the real app
  *   "unactivated" -> activation screen (fresh install; admin sets it up)
@@ -98,6 +117,7 @@ async function evaluate(dataDir) {
       licensedTo: result.payload.to || null,
       licenseId: result.payload.lic || null,
       expiresAt: result.payload.exp || null,
+      seats: seatsFrom(result.payload),
     };
   }
 
@@ -136,6 +156,7 @@ async function activate(dataDir, licenseKey) {
     ok: true,
     reason: result.reason,
     licensedTo: result.payload.to || null,
+    seats: seatsFrom(result.payload),
     message: "Activated. Starting the application...",
   };
 }
@@ -162,4 +183,7 @@ module.exports = {
   clearStoredKey,
   licensePath,
   activationMessage,
+  // Exported for its own tests. Failing open for keys that predate seats is the
+  // kind of decision that deserves a test naming it, not a comment hoping so.
+  seatsFrom,
 };

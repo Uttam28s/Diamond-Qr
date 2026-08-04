@@ -1,0 +1,488 @@
+/**
+ * The host store and its LAN server, exercised for real: a temp directory on
+ * disk, an actual HTTP server on a real port, actual requests.
+ *
+ * Both modules live under public/ because Electron's main process requires them
+ * unbundled, and both are deliberately free of Electron imports so this test can
+ * drive them directly.
+ */
+
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const http = require("http");
+
+const { createFileStore, COMPACT_AFTER } = require("../../public/db/fileStore");
+const { createServer } = require("../../public/net/server");
+const {
+  applyDelta,
+  computeDelta,
+  isAdditiveOnly,
+} = require("../../public/shared/delta");
+
+const tempDir = () =>
+  fs.mkdtempSync(path.join(os.tmpdir(), "diamond-qr-test-"));
+
+const stateWith = (overrides = {}) => ({
+  schema: 3,
+  kapans: {},
+  lots: {},
+  packets: {},
+  ...overrides,
+});
+
+const kapan = (id, number) => ({ id, number, season: "25-26", createdAt: "2026-01-17" });
+const lot = (id, kapanId, lotNo, pcs) => ({ id, kapanId, lotNo, pcs, charmi: -2 });
+const packet = (id, kapanId, lotId, k, p) => ({
+  id,
+  kapanId,
+  lotId,
+  kachuWeight: k,
+  polishedWeight: p,
+  rawCode: `code-${id}`,
+  scannedAt: "2026-07-17T09:15:32.000Z",
+});
+
+/* ========================================================================
+   Deltas
+   ======================================================================== */
+
+describe("deltas", () => {
+  it("records only the rows that changed", () => {
+    const before = stateWith({
+      kapans: { k1: kapan("k1", "41") },
+      lots: { l1: lot("l1", "k1", 1, 142), l2: lot("l2", "k1", 2, 140) },
+    });
+    const editedLot = { ...before.lots.l1, pcs: 999 };
+    const after = { ...before, lots: { ...before.lots, l1: editedLot } };
+
+    const delta = computeDelta(before, after);
+
+    expect(Object.keys(delta.upserts.lots)).toEqual(["l1"]);
+    // l2 is untouched, so it is the same object and must not be in the delta.
+    expect(delta.upserts.lots.l2).toBeUndefined();
+    expect(Object.keys(delta.upserts.kapans)).toEqual([]);
+  });
+
+  it("records deletions", () => {
+    const before = stateWith({ lots: { l1: lot("l1", "k1", 1, 1) } });
+    const delta = computeDelta(before, stateWith({ lots: {} }));
+    expect(delta.deletes.lots).toEqual(["l1"]);
+  });
+
+  it("is null when nothing changed", () => {
+    const state = stateWith({ kapans: { k1: kapan("k1", "41") } });
+    expect(computeDelta(state, state)).toBeNull();
+    expect(computeDelta(state, { ...state })).toBeNull();
+  });
+
+  it("round-trips through apply", () => {
+    const before = stateWith({ kapans: { k1: kapan("k1", "41") } });
+    const after = stateWith({
+      kapans: { k1: kapan("k1", "41"), k2: kapan("k2", "42") },
+      lots: { l1: lot("l1", "k1", 1, 142) },
+    });
+
+    expect(applyDelta(before, computeDelta(before, after))).toEqual(after);
+  });
+
+  it("does not mutate the state it is applied to", () => {
+    const before = stateWith({ kapans: { k1: kapan("k1", "41") } });
+    const snapshot = JSON.stringify(before);
+    applyDelta(before, { upserts: { lots: { l1: lot("l1", "k1", 1, 5) } }, deletes: {} });
+    expect(JSON.stringify(before)).toBe(snapshot);
+  });
+
+  it("knows a packets-only change from one that needs the client up to date", () => {
+    const base = stateWith({ kapans: { k1: kapan("k1", "41") } });
+
+    const scanned = computeDelta(base, {
+      ...base,
+      packets: { p1: packet("p1", "k1", null, 1, 0.2) },
+    });
+    expect(isAdditiveOnly(scanned)).toBe(true);
+
+    const edited = computeDelta(base, {
+      ...base,
+      kapans: { k1: { ...base.kapans.k1, season: "26-27" } },
+    });
+    expect(isAdditiveOnly(edited)).toBe(false);
+
+    const deleted = computeDelta(base, stateWith({}));
+    expect(isAdditiveOnly(deleted)).toBe(false);
+  });
+});
+
+/* ========================================================================
+   The file store
+   ======================================================================== */
+
+describe("the host store on disk", () => {
+  let dir;
+  beforeEach(() => {
+    dir = tempDir();
+  });
+
+  it("starts empty and round-trips through a reopen", () => {
+    const store = createFileStore({ dir });
+    expect(store.load()).toEqual(stateWith());
+
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+
+    const reopened = createFileStore({ dir });
+    expect(reopened.load().kapans.k1.number).toBe("41");
+  });
+
+  it("appends a journal line per change instead of rewriting everything", () => {
+    const store = createFileStore({ dir });
+    store.load();
+
+    let state = stateWith({ kapans: { k1: kapan("k1", "41") } });
+    store.save(state);
+    for (let index = 1; index <= 5; index += 1) {
+      state = {
+        ...state,
+        lots: { ...state.lots, [`l${index}`]: lot(`l${index}`, "k1", index, 100 + index) },
+      };
+      store.save(state);
+    }
+
+    const journal = fs
+      .readFileSync(path.join(dir, "journal.jsonl"), "utf8")
+      .trim()
+      .split("\n");
+    expect(journal).toHaveLength(6);
+    // Each line carries one lot, not the whole dataset.
+    expect(Object.keys(JSON.parse(journal[3]).upserts.lots)).toHaveLength(1);
+  });
+
+  it("replays the journal on load", () => {
+    const first = createFileStore({ dir });
+    first.load();
+    let state = stateWith({ kapans: { k1: kapan("k1", "41") } });
+    first.save(state);
+    state = { ...state, lots: { l1: lot("l1", "k1", 1, 142) } };
+    first.save(state);
+    state = { ...state, lots: { l1: { ...state.lots.l1, returnPcs: 139 } } };
+    first.save(state);
+
+    const reopened = createFileStore({ dir }).load();
+    expect(reopened.lots.l1.pcs).toBe(142);
+    expect(reopened.lots.l1.returnPcs).toBe(139);
+  });
+
+  it("compacts once the journal gets long, and the data survives it", () => {
+    const store = createFileStore({ dir });
+    store.load();
+
+    let state = stateWith({ kapans: { k1: kapan("k1", "41") } });
+    store.save(state);
+
+    for (let index = 0; index < COMPACT_AFTER + 5; index += 1) {
+      state = {
+        ...state,
+        packets: {
+          ...state.packets,
+          [`p${index}`]: packet(`p${index}`, "k1", null, 1, 0.2),
+        },
+      };
+      store.save(state);
+    }
+
+    // The journal was truncated at the threshold rather than growing forever.
+    const journalLines = fs
+      .readFileSync(path.join(dir, "journal.jsonl"), "utf8")
+      .trim();
+    expect(journalLines ? journalLines.split("\n").length : 0).toBeLessThan(COMPACT_AFTER);
+
+    const reopened = createFileStore({ dir }).load();
+    expect(Object.keys(reopened.packets)).toHaveLength(COMPACT_AFTER + 5);
+  });
+
+  it("survives a torn last journal line, keeping everything before it", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    let state = stateWith({ kapans: { k1: kapan("k1", "41") } });
+    store.save(state);
+    state = { ...state, lots: { l1: lot("l1", "k1", 1, 142) } };
+    store.save(state);
+
+    // What a power cut mid-write leaves behind.
+    fs.appendFileSync(path.join(dir, "journal.jsonl"), '{"upserts":{"lots":{"l2":{"id":"l2"');
+
+    const reopened = createFileStore({ dir }).load();
+    expect(reopened.lots.l1.pcs).toBe(142);
+    expect(reopened.lots.l2).toBeUndefined();
+  });
+
+  it("recovers from the .bak when a snapshot is lost mid-compaction", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+    store.compact();
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") }, lots: { l1: lot("l1", "k1", 1, 7) } }));
+    store.compact();
+
+    // Simulate the crash window: snapshot gone, .bak and journal present.
+    fs.unlinkSync(path.join(dir, "snapshot.json"));
+
+    const reopened = createFileStore({ dir }).load();
+    // The .bak is one compaction behind, so the Kapan is there.
+    expect(reopened.kapans.k1).toBeTruthy();
+  });
+
+  it("refuses data written by a different schema", () => {
+    fs.writeFileSync(
+      path.join(dir, "snapshot.json"),
+      JSON.stringify({ schema: 99, kapans: {} })
+    );
+    expect(() => createFileStore({ dir }).load()).toThrow(/schema 99/);
+  });
+
+  it("writes a dated backup and keeps a bounded number of them", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+
+    const file = store.backup();
+    expect(fs.existsSync(file)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).data.kapans.k1.number).toBe("41");
+
+    // Two backups on the same day are one file, not two.
+    store.backup();
+    expect(fs.readdirSync(path.join(dir, "backups"))).toHaveLength(1);
+  });
+
+  it("bumps its version only when something actually changed", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    const afterLoad = store.getVersion();
+
+    const state = stateWith({ kapans: { k1: kapan("k1", "41") } });
+    store.save(state);
+    const afterChange = store.getVersion();
+    expect(afterChange).toBeGreaterThan(afterLoad);
+
+    store.save(state);
+    expect(store.getVersion()).toBe(afterChange);
+  });
+});
+
+/* ========================================================================
+   The server, over a real socket
+   ======================================================================== */
+
+/** Minimal HTTP client so the test exercises the wire, not a mock. */
+const request = (port, method, pathname, body, headers = {}) =>
+  new Promise((resolve, reject) => {
+    const payload = body === undefined ? null : JSON.stringify(body);
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        method,
+        path: pathname,
+        headers: {
+          "Content-Type": "application/json",
+          ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+          ...headers,
+        },
+      },
+      (res) => {
+        let text = "";
+        res.on("data", (chunk) => {
+          text += chunk;
+        });
+        res.on("end", () =>
+          resolve({ status: res.statusCode, body: text ? JSON.parse(text) : null })
+        );
+      }
+    );
+    req.on("error", reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+
+describe("the host server", () => {
+  let dir;
+  let store;
+  let host;
+  let port;
+
+  const start = async (options = {}) => {
+    dir = tempDir();
+    store = createFileStore({ dir });
+    store.load();
+    host = createServer({ store, ...options });
+    const address = await host.listen(0, "127.0.0.1");
+    port = address.port;
+  };
+
+  afterEach(async () => {
+    if (host) await host.close();
+    host = null;
+  });
+
+  const asOffice = { "x-device-id": "office", "x-device-name": "OFFICE-PC" };
+  const asStation = { "x-device-id": "station-1", "x-device-name": "SCAN-1" };
+
+  it("answers a ping with its protocol and version", async () => {
+    await start();
+    const { status, body } = await request(port, "GET", "/ping");
+    expect(status).toBe(200);
+    expect(body.protocol).toBe(1);
+    expect(typeof body.version).toBe("number");
+  });
+
+  it("serves the full state", async () => {
+    await start();
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+
+    const { status, body } = await request(port, "GET", "/state", undefined, asOffice);
+    expect(status).toBe(200);
+    expect(body.state.kapans.k1.number).toBe("41");
+    expect(body.version).toBe(store.getVersion());
+  });
+
+  it("accepts a commit and persists it to disk", async () => {
+    await start();
+
+    const delta = computeDelta(
+      store.getState(),
+      stateWith({ kapans: { k1: kapan("k1", "41") } })
+    );
+    const { status, body } = await request(
+      port,
+      "POST",
+      "/commit",
+      { delta, baseVersion: store.getVersion() },
+      asOffice
+    );
+
+    expect(status).toBe(200);
+    expect(body.version).toBeGreaterThan(0);
+    // Really on disk, not just in memory.
+    expect(createFileStore({ dir }).load().kapans.k1.number).toBe("41");
+  });
+
+  it("rejects an edit based on a version the host has moved past", async () => {
+    await start();
+    const stale = store.getVersion();
+
+    // Another PC gets there first.
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+
+    const delta = computeDelta(
+      stateWith(),
+      stateWith({ kapans: { k9: kapan("k9", "99") } })
+    );
+    const { status, body } = await request(
+      port,
+      "POST",
+      "/commit",
+      { delta, baseVersion: stale },
+      asOffice
+    );
+
+    expect(status).toBe(409);
+    expect(body.error).toMatch(/Another computer changed this first/);
+    expect(body.version).toBe(store.getVersion());
+  });
+
+  it("accepts scanned packets even from a stale client", async () => {
+    await start();
+    // A scan station that was offline while the office added a Kapan.
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+    const staleVersion = 0;
+
+    const delta = {
+      upserts: {
+        kapans: {},
+        lots: {},
+        packets: { p1: packet("p1", "k1", null, 7.348, 0.928) },
+      },
+      deletes: { kapans: [], lots: [], packets: [] },
+    };
+
+    const { status } = await request(
+      port,
+      "POST",
+      "/commit",
+      { delta, baseVersion: staleVersion },
+      asStation
+    );
+
+    // This is the whole point of the queue: a burst scanned during an outage
+    // uploads without the station having to catch up first.
+    expect(status).toBe(200);
+    const onDisk = createFileStore({ dir }).load();
+    expect(onDisk.packets.p1.kachuWeight).toBe(7.348);
+    expect(onDisk.kapans.k1).toBeTruthy();
+  });
+
+  it("counts seats and refuses one past the licence", async () => {
+    await start({ seats: 2 });
+
+    expect((await request(port, "GET", "/state", undefined, asOffice)).status).toBe(200);
+    expect((await request(port, "GET", "/state", undefined, asStation)).status).toBe(200);
+
+    const third = await request(port, "GET", "/state", undefined, {
+      "x-device-id": "station-2",
+      "x-device-name": "SCAN-2",
+    });
+    expect(third.status).toBe(403);
+    expect(third.body.error).toMatch(/2 computer\(s\)/);
+
+    // A device already holding a seat is never locked out by the cap.
+    expect((await request(port, "GET", "/state", undefined, asOffice)).status).toBe(200);
+  });
+
+  it("lists the connected computers for Settings", async () => {
+    await start({ seats: 4 });
+    await request(port, "GET", "/state", undefined, asOffice);
+    await request(port, "GET", "/state", undefined, asStation);
+
+    const { body } = await request(port, "GET", "/clients", undefined, asOffice);
+    expect(body.seats).toBe(4);
+    expect(body.clients.map((client) => client.name).sort()).toEqual([
+      "OFFICE-PC",
+      "SCAN-1",
+    ]);
+  });
+
+  it("turns away requests without the host token", async () => {
+    await start({ token: "secret" });
+
+    expect((await request(port, "GET", "/ping")).status).toBe(401);
+    expect(
+      (await request(port, "GET", "/ping", undefined, { "x-token": "secret" })).status
+    ).toBe(200);
+  });
+
+  it("refuses an oversized change rather than trying to hold it", async () => {
+    await start();
+    const packets = {};
+    for (let index = 0; index < 20001; index += 1) {
+      packets[`p${index}`] = packet(`p${index}`, "k1", null, 1, 0.2);
+    }
+
+    const { status, body } = await request(
+      port,
+      "POST",
+      "/commit",
+      {
+        delta: { upserts: { kapans: {}, lots: {}, packets }, deletes: {} },
+        baseVersion: store.getVersion(),
+      },
+      asOffice
+    );
+
+    expect(status).toBe(413);
+    expect(body.error).toMatch(/too large/);
+  });
+
+  it("404s an unknown path instead of failing oddly", async () => {
+    await start();
+    expect((await request(port, "GET", "/nope")).status).toBe(404);
+  });
+});

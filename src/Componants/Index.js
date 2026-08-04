@@ -6,25 +6,45 @@ import {
   IconClose,
   IconHome,
   IconKapans,
+  IconLayers,
   IconReports,
   IconScan,
   IconSettings,
-  IconWifi,
+  IconUndo,
 } from "./Icons";
 import ScanForm from "./panels/ScanForm";
 import SessionTable from "./panels/SessionTable";
-import KapanHistory, { SORT_OPTIONS } from "./panels/KapanHistory";
-import KapanDetail from "./panels/KapanDetail";
 import SaveModal from "./panels/SaveModal";
 import ReportsScreen from "./panels/ReportsScreen";
 import SettingsScreen from "./panels/SettingsScreen";
+import KapanList from "./panels/KapanList";
+import KapanWorkbench from "./panels/KapanWorkbench";
+import KapanFormModal from "./panels/KapanFormModal";
+import DeleteKapanModal from "./panels/DeleteKapanModal";
+import LotPicker from "./panels/LotPicker";
+import ActiveLotBar from "./panels/ActiveLotBar";
+import ConnectionCard from "./panels/ConnectionCard";
+import ReturnsQueue from "./panels/ReturnsQueue";
+import { StoreProvider, useStore } from "../store/StoreContext";
 import {
-  buildKapanRows,
+  ALL_SEASONS,
+  selectDefaultSeason,
+  selectKapanRows,
+  selectKapanView,
+  selectScanTarget,
+  selectSeasons,
+} from "../domain/selectors";
+import {
+  addPacket,
+  createKapan,
+  deleteKapan,
+  kapanByNumber,
+  updateKapan,
+} from "../domain/operations";
+import {
+  ACTIVE_LOT_KEY,
   calculateTotals,
   DEFAULT_SETTINGS,
-  KAPAN_STORAGE_KEY,
-  normalizeKapanNumber,
-  normalizeKapans,
   normalizeRecords,
   parseScanCode,
   readJson,
@@ -37,31 +57,55 @@ import {
 // shown in Settings can never drift from the installer version.
 const APP_VERSION = process.env.REACT_APP_VERSION || "2.1.0";
 
+/**
+ * What the topbar says about where the data is. "Offline Mode" was true of every
+ * build until now and is still true of most of them - but on a client PC the data
+ * is on another computer, and the header should not say otherwise.
+ */
+const TOPBAR_LABEL = {
+  browser: "Offline Mode",
+  standalone: "Offline Mode",
+  host: "Host — serving this office",
+  client: "Connected to office PC",
+};
+
 const NAV_ITEMS = [
   { key: "scan", label: "Scan", title: "Scan Packet", Icon: IconScan },
-  { key: "kapans", label: "Kapans", title: "Kapan History", Icon: IconKapans },
+  { key: "kapans", label: "Kapans", title: "Kapans", Icon: IconKapans },
+  // Returns get their own screen because they arrive weeks after the lot goes out,
+  // and finding those rows inside the thirteen-column sheet is the slow part.
+  { key: "returns", label: "Returns", title: "Returns", Icon: IconLayers },
   { key: "reports", label: "Reports", title: "Reports", Icon: IconReports },
   { key: "settings", label: "Settings", title: "Settings", Icon: IconSettings },
 ];
 
-const sortRows = (rows, sort) => {
-  const sorted = [...rows];
-
-  switch (sort) {
-    case "number":
-      return sorted.sort((a, b) => a.kapanNumber.localeCompare(b.kapanNumber));
-    case "yield":
-      return sorted.sort(
-        (a, b) => Number(b.totals.percentage) - Number(a.totals.percentage)
-      );
-    case "rough":
-      return sorted.sort((a, b) => b.totals.kWeight - a.totals.kWeight);
-    default:
-      return sorted;
-  }
+/** Whether a keystroke is landing in something the user is typing into. */
+const isEditable = (target) => {
+  if (!target || !target.tagName) return false;
+  const tag = target.tagName.toLowerCase();
+  return (
+    tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable
+  );
 };
 
-const ConfirmDialog = ({ title, message, confirmLabel, onCancel, onConfirm }) => {
+/* ------------------------------------------------------------------ dialogs */
+
+/**
+ * Confirm with an optional second action. Deleting a lot that holds packets asks
+ * a question with two useful answers rather than OK/Cancel, and the safe one is
+ * the primary button so Enter never destroys scan data.
+ */
+const ConfirmDialog = ({
+  title,
+  message,
+  confirmLabel,
+  altLabel,
+  onCancel,
+  onConfirm,
+  onAlt,
+}) => {
+  const confirmRef = useRef(null);
+
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === "Escape") onCancel();
@@ -69,6 +113,10 @@ const ConfirmDialog = ({ title, message, confirmLabel, onCancel, onConfirm }) =>
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onCancel]);
+
+  useEffect(() => {
+    if (confirmRef.current) confirmRef.current.focus();
+  }, []);
 
   return (
     <div
@@ -91,7 +139,12 @@ const ConfirmDialog = ({ title, message, confirmLabel, onCancel, onConfirm }) =>
           <button type="button" className="button ghost" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="button danger" autoFocus onClick={onConfirm}>
+          {altLabel && (
+            <button type="button" className="button danger" onClick={onAlt}>
+              {altLabel}
+            </button>
+          )}
+          <button type="button" className="button primary" ref={confirmRef} onClick={onConfirm}>
             {confirmLabel}
           </button>
         </footer>
@@ -100,108 +153,170 @@ const ConfirmDialog = ({ title, message, confirmLabel, onCancel, onConfirm }) =>
   );
 };
 
+/* -------------------------------------------------------------- the shell */
+
 const Index = () => {
-  const scanInputRef = useRef(null);
-
-  const [activeTab, setActiveTab] = useState("scan");
-  const [currentCode, setCurrentCode] = useState("");
-  const [previousCode, setPreviousCode] = useState("");
-  const [scanSession, setScanSession] = useState([]);
-  const [kapans, setKapans] = useState({});
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-
-  const [saveModalOpen, setSaveModalOpen] = useState(false);
-  const [kapanNumber, setKapanNumber] = useState("");
-  const [confirm, setConfirm] = useState(null);
   const [toast, setToast] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const undoRef = useRef(null);
 
-  const [search, setSearch] = useState("");
-  const [sort, setSort] = useState(SORT_OPTIONS[0].key);
-  const [page, setPage] = useState(1);
-  const [selectedKapan, setSelectedKapan] = useState("");
-  const [groupMode, setGroupMode] = useState("date");
-
-  /* ------------------------------------------------------------ bootstrap */
-
-  useEffect(() => {
-    setScanSession(normalizeRecords(readJson(SESSION_STORAGE_KEY, [])));
-    setKapans(normalizeKapans(readJson(KAPAN_STORAGE_KEY, {})));
-    setSettings({ ...DEFAULT_SETTINGS, ...readJson(SETTINGS_STORAGE_KEY, {}) });
-  }, []);
-
-  const showToast = useCallback((text, tone = "success") => {
-    setToast({ text, tone, id: Date.now() });
+  const notify = useCallback((text, tone = "success", options = {}) => {
+    setToast({ text, tone, undoable: !!options.undoable, id: Date.now() });
   }, []);
 
   useEffect(() => {
     if (!toast) return undefined;
-    const timer = setTimeout(() => setToast(null), 3600);
+    // Undoable messages linger, because the Undo button is the point of them.
+    const timer = setTimeout(() => setToast(null), toast.undoable ? 6500 : 3600);
     return () => clearTimeout(timer);
   }, [toast]);
 
-  /* -------------------------------------------------------------- persist */
+  const requestConfirm = useCallback((request) => setConfirm(request), []);
 
-  const persistSession = useCallback((records) => {
-    setScanSession(records);
-    writeJson(SESSION_STORAGE_KEY, records);
+  return (
+    <StoreProvider notify={notify} deviceName="">
+      <Workspace
+        toast={toast}
+        onDismissToast={() => setToast(null)}
+        notify={notify}
+        confirm={confirm}
+        onConfirmRequest={requestConfirm}
+        onConfirmClose={() => setConfirm(null)}
+        undoRef={undoRef}
+      />
+    </StoreProvider>
+  );
+};
+
+/* ----------------------------------------------------------------- workspace */
+
+const Workspace = ({
+  toast,
+  onDismissToast,
+  notify,
+  confirm,
+  onConfirmRequest,
+  onConfirmClose,
+}) => {
+  const {
+    state,
+    status,
+    loadError,
+    run,
+    undo,
+    canUndo,
+    role,
+    readOnly,
+    connection,
+    queuedCount,
+  } = useStore();
+  const scanInputRef = useRef(null);
+
+  const [activeTab, setActiveTab] = useState("scan");
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+
+  /* scanning session — transient and per-device, so it stays in local storage */
+  const [currentCode, setCurrentCode] = useState("");
+  const [previousCode, setPreviousCode] = useState("");
+  const [scanSession, setScanSession] = useState([]);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  // Which lot the next scan goes into. Persisted per device, because a scan
+  // station works one lot for a whole burst and restarting the app should not
+  // silently start filing scans somewhere else.
+  const [activeLotId, setActiveLotId] = useState(null);
+  // "scan" (Ctrl+L) or "jump" (Ctrl+K); null when closed.
+  const [pickerMode, setPickerMode] = useState(null);
+
+  /* Kapan browsing */
+  const [season, setSeason] = useState(ALL_SEASONS);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("recent");
+  const [openKapanId, setOpenKapanId] = useState(null);
+  const [kapanForm, setKapanForm] = useState(null); // {kapan} | {}
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  useEffect(() => {
+    setScanSession(normalizeRecords(readJson(SESSION_STORAGE_KEY, [])));
+    setSettings({ ...DEFAULT_SETTINGS, ...readJson(SETTINGS_STORAGE_KEY, {}) });
+    setActiveLotId(readJson(ACTIVE_LOT_KEY, null));
   }, []);
 
-  const persistKapans = useCallback((nextKapans) => {
-    setKapans(nextKapans);
-    writeJson(KAPAN_STORAGE_KEY, nextKapans);
+  const persistActiveLot = useCallback((lotId) => {
+    setActiveLotId(lotId);
+    writeJson(ACTIVE_LOT_KEY, lotId);
   }, []);
 
-  const persistSettings = useCallback((nextSettings) => {
-    setSettings(nextSettings);
-    writeJson(SETTINGS_STORAGE_KEY, nextSettings);
+  /**
+   * The unsaved scan session.
+   *
+   * `writeJson` returns false rather than throwing, and until now nothing looked.
+   * That is the same silent-failure the Kapan data used to have: a full disk meant
+   * the table showed scans that were not written anywhere, and closing the app lost
+   * them without a word. The scans are still in memory and still saveable to a
+   * Kapan, so this warns rather than blocks - but it does say so.
+   */
+  const persistSession = useCallback(
+    (records) => {
+      setScanSession(records);
+      if (!writeJson(SESSION_STORAGE_KEY, records) && records.length) {
+        notify(
+          "This device is out of storage space, so the scan list could not be saved. Save these scans to a lot now — closing the app would lose them.",
+          "error"
+        );
+      }
+    },
+    [notify]
+  );
+
+  // Only the host has anything to report here, and only for display.
+  const [hostStatus, setHostStatus] = useState(null);
+  useEffect(() => {
+    const bridge = typeof window !== "undefined" ? window.diamondQR : null;
+    if (!bridge || role !== "host") return undefined;
+
+    let stopped = false;
+    const tick = async () => {
+      const next = await bridge.host.status();
+      if (!stopped) setHostStatus(next);
+    };
+    tick();
+    const timer = setInterval(tick, 5000);
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [role]);
+
+  const persistSettings = useCallback((next) => {
+    setSettings(next);
+    writeJson(SETTINGS_STORAGE_KEY, next);
   }, []);
 
   /* --------------------------------------------------------- derived data */
 
+  const listing = useMemo(
+    () => selectKapanRows(state, { season, search, sort }),
+    [state, season, search, sort]
+  );
+  const allRows = useMemo(() => selectKapanRows(state, { sort: "recent" }).rows, [state]);
+  const seasons = useMemo(() => selectSeasons(state), [state]);
+  const openView = useMemo(
+    () => (openKapanId ? selectKapanView(state, openKapanId) : null),
+    [state, openKapanId]
+  );
   const sessionTotals = useMemo(() => calculateTotals(scanSession), [scanSession]);
-  const allKapanRows = useMemo(() => buildKapanRows(kapans), [kapans]);
-
-  const filteredRows = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const matched = term
-      ? allKapanRows.filter((kapan) =>
-          kapan.kapanNumber.toLowerCase().includes(term)
-        )
-      : allKapanRows;
-    return sortRows(matched, sort);
-  }, [allKapanRows, search, sort]);
-
-  const rowsPerPage = settings.rowsPerPage || DEFAULT_SETTINGS.rowsPerPage;
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / rowsPerPage));
-  const safePage = Math.min(page, pageCount);
-  const pagedRows = filteredRows.slice(
-    (safePage - 1) * rowsPerPage,
-    safePage * rowsPerPage
+  // Resolved against live data, so a lot deleted while it was the scan target
+  // simply falls back to Unassigned instead of swallowing the next burst.
+  const scanTarget = useMemo(
+    () => selectScanTarget(state, activeLotId),
+    [state, activeLotId]
   );
 
+  // A Kapan deleted while open should not leave the workbench showing a ghost.
   useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, sort, rowsPerPage]);
-
-  const activeKapan = useMemo(() => {
-    const found = allKapanRows.find((kapan) => kapan.kapanNumber === selectedKapan);
-    return found || pagedRows[0] || allKapanRows[0] || null;
-  }, [allKapanRows, pagedRows, selectedKapan]);
-
-  useEffect(() => {
-    if (!selectedKapan && allKapanRows.length) {
-      setSelectedKapan(allKapanRows[0].kapanNumber);
-    }
-  }, [allKapanRows, selectedKapan]);
-
-  const existingKapanNumbers = useMemo(
-    () => allKapanRows.map((kapan) => kapan.kapanNumber),
-    [allKapanRows]
-  );
+    if (openKapanId && !state.kapans[openKapanId]) setOpenKapanId(null);
+  }, [openKapanId, state.kapans]);
 
   /* ------------------------------------------------------------- scanning */
 
@@ -217,7 +332,8 @@ const Index = () => {
 
   // A hardware scanner types into whatever has focus. If nothing interactive is
   // focused, redirect the keystroke into the scan box so the first character of
-  // a burst is never lost.
+  // a burst is never lost. The sheet's cells are inputs, so they are excluded by
+  // the same check and a scanner burst can never overwrite a cell being typed.
   useEffect(() => {
     if (activeTab !== "scan" || saveModalOpen || confirm) return undefined;
 
@@ -239,41 +355,73 @@ const Index = () => {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [activeTab, saveModalOpen, confirm, focusScanner]);
 
+  /**
+   * The window-level shortcuts.
+   *
+   *   Ctrl+L  pick the lot to scan into - used mid-burst with a scanner in the
+   *           other hand, on whichever screen happens to be up
+   *   Ctrl+K  go to a Kapan or lot
+   *   Ctrl+Z  undo. The sheet handles its own Ctrl+Z, because focus there is always
+   *           inside a cell input, and stops the event - so this covers the rest
+   *   /       jump to the search box, when the screen has one
+   */
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.ctrlKey || event.metaKey) {
+        const key = `${event.key}`.toLowerCase();
+
+        if (key === "l") {
+          event.preventDefault();
+          setPickerMode("scan");
+          return;
+        }
+        if (key === "k") {
+          event.preventDefault();
+          setPickerMode("jump");
+          return;
+        }
+        if (key === "z") {
+          event.preventDefault();
+          undo();
+        }
+        return;
+      }
+
+      // Slash is an ordinary character, so it only means "search" when it is not
+      // being typed into something.
+      if (event.key === "/" && !isEditable(event.target)) {
+        const box = document.querySelector('input[type="search"]');
+        if (box) {
+          event.preventDefault();
+          box.focus();
+          box.select();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo]);
+
   const handleScan = () => {
     const parsed = parseScanCode(currentCode);
 
     if (!parsed) {
-      // Clear the box as well: leaving a bad read in place would let the next
-      // scanner burst append to it and silently record a corrupted code.
       setCurrentCode("");
-      showToast(
+      notify(
         "Invalid scan. The code must end with the kachu and polished weight — e.g. 0.011,0.024,0.034,0.12,0.024,0.022",
         "error"
       );
       return;
     }
 
-    // Every scan is its own packet — the same code may legitimately be read
-    // again, so repeats are appended rather than rejected.
     persistSession([...scanSession, parsed]);
     setPreviousCode(parsed.rawCode);
     setCurrentCode("");
   };
 
-  const handleScanKeyDown = (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handleScan();
-    }
-  };
-
-  const handleRemoveRecord = (id) => {
-    persistSession(scanSession.filter((record) => record.id !== id));
-    showToast("Scan removed from the session.");
-  };
-
   const handleClearSession = () => {
-    setConfirm({
+    onConfirmRequest({
       title: "Clear current session",
       message: `This removes all ${scanSession.length} unsaved scan(s) from the session table. Saved Kapans are not affected.`,
       confirmLabel: "Clear session",
@@ -281,111 +429,161 @@ const Index = () => {
         persistSession([]);
         setCurrentCode("");
         setPreviousCode("");
-        setConfirm(null);
-        showToast("Session cleared.");
+        onConfirmClose();
+        notify("Session cleared.");
       },
     });
   };
 
-  /* ---------------------------------------------------------------- saving */
-
-  const handleSaveRecords = () => {
-    const normalized = normalizeKapanNumber(kapanNumber);
-
-    if (!normalized) {
-      showToast("Enter a Kapan number before saving.", "error");
+  /**
+   * Saves the scanned session into a Kapan, and into one of its lots if the
+   * owner picked one. With no lot picked the packets land in the Kapan's
+   * unassigned tray rather than being refused - a scan must never wait on
+   * paperwork.
+   */
+  /**
+   * Commits the session into the active lot with no dialog at all. This is the
+   * common path on a scan station: pick the lot once, then scan and save, scan
+   * and save.
+   */
+  const handleSaveToActiveLot = async () => {
+    if (!scanTarget) {
+      setSaveModalOpen(true);
       return;
     }
-
-    if (!scanSession.length) {
-      showToast("Scan at least one packet before saving.", "error");
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const existing = kapans[normalized];
-    const savedCount = scanSession.length;
-
-    persistKapans({
-      ...kapans,
-      [normalized]: {
-        kapanNumber: normalized,
-        createdAt: (existing && existing.createdAt) || now,
-        updatedAt: now,
-        records: [...((existing && existing.records) || []), ...scanSession],
-      },
+    await commitSession({
+      kapanId: scanTarget.kapan.id,
+      lotId: scanTarget.lot.id,
+      label: `Kapan ${scanTarget.kapan.number} lot ${scanTarget.lot.lotNo}`,
     });
+  };
+
+  /** Adds every session packet in one undoable step. */
+  const commitSession = async ({ kapanId, lotId, label }) => {
+    const records = scanSession;
+
+    const outcome = await run((current) => {
+      if (!current.kapans[kapanId]) {
+        return { state: current, undo: null, error: "That Kapan no longer exists." };
+      }
+
+      let working = current;
+      for (const record of records) {
+        const step = addPacket(working, {
+          kapanId,
+          lotId: lotId || null,
+          rawCode: record.rawCode,
+          kachuWeight: record.kWeight,
+          polishedWeight: record.pWeight,
+          scannedAt: record.scannedAt,
+          scannedOn: settings.deviceName || "",
+        });
+        if (step.error) return step;
+        working = step.state;
+      }
+
+      return {
+        state: working,
+        undo: {
+          label: `${records.length} packet(s) saved to ${label}`,
+          // One inverse for the whole burst: undoing half a save would leave the
+          // lot's weights wrong in a way nobody could see.
+          apply: () => current,
+        },
+      };
+    });
+
+    if (!outcome.ok) return;
 
     persistSession([]);
-    setSelectedKapan(normalized);
-    setKapanNumber("");
-    setSaveModalOpen(false);
     setPreviousCode("");
-    setSearch("");
-    setPage(1);
-    showToast(
-      `${savedCount} record(s) ${existing ? "added to" : "saved as"} ${normalized}.`
-    );
+    setSaveModalOpen(false);
   };
 
-  const handleDeleteKapan = (number) => {
-    setConfirm({
-      title: `Delete ${number}`,
-      message: `All packet records stored under ${number} will be permanently removed.`,
-      confirmLabel: "Delete Kapan",
-      onConfirm: () => {
-        const next = { ...kapans };
-        delete next[number];
-        persistKapans(next);
-        if (selectedKapan === number) setSelectedKapan("");
-        setConfirm(null);
-        showToast(`${number} deleted.`);
-      },
+  const handleSaveSession = async ({ kapanNumber, lotId }) => {
+    if (!scanSession.length) {
+      notify("Scan at least one packet before saving.", "error");
+      return;
+    }
+
+    let kapan = kapanByNumber(state, kapanNumber);
+
+    if (!kapan) {
+      const created = await run((current) =>
+        createKapan(current, {
+          number: kapanNumber,
+          season: selectDefaultSeason(state),
+        })
+      );
+      if (!created.ok) return;
+      // Read from the returned state, not the closure: React has not re-rendered
+      // with the new Kapan yet.
+      kapan = kapanByNumber(created.state, kapanNumber);
+      if (!kapan) return;
+    }
+
+    await commitSession({
+      kapanId: kapan.id,
+      lotId: lotId || null,
+      label: lotId
+        ? `Kapan ${kapan.number} lot ${(state.lots[lotId] || {}).lotNo}`
+        : `Kapan ${kapan.number} (Unassigned)`,
     });
   };
 
-  const handleDeleteAll = () => {
-    setConfirm({
-      title: "Delete all data",
-      message:
-        "Every Kapan, packet record and the current scan session will be permanently removed from this device.",
-      confirmLabel: "Delete everything",
-      onConfirm: () => {
-        persistKapans({});
-        persistSession([]);
-        setSelectedKapan("");
-        setPreviousCode("");
-        setCurrentCode("");
-        setConfirm(null);
-        showToast("All data deleted.");
-      },
-    });
+  /* --------------------------------------------------------------- Kapans */
+
+  const submitKapanForm = async (fields) => {
+    if (readOnly) return;
+    const editing = kapanForm && kapanForm.kapan;
+    const outcome = editing
+      ? await run((current) => updateKapan(current, editing.id, fields))
+      : await run((current) => createKapan(current, fields));
+
+    if (!outcome.ok) return;
+    setKapanForm(null);
+
+    if (!editing) {
+      const created = kapanByNumber(outcome.state || state, fields.number);
+      if (created) {
+        // Straight into the sheet, because the next thing anyone does after
+        // creating a Kapan is add its lots.
+        setOpenKapanId(created.id);
+        setActiveTab("kapans");
+      }
+    }
+  };
+
+  const confirmDeleteKapan = async () => {
+    if (readOnly) return;
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    if (!target) return;
+    const outcome = await run((current) => deleteKapan(current, target.kapan.id));
+    if (outcome.ok && openKapanId === target.kapan.id) setOpenKapanId(null);
   };
 
   const activeNav = NAV_ITEMS.find((item) => item.key === activeTab) || NAV_ITEMS[0];
 
-  const kapanPanels = (
-    <div className="kapan-grid">
-      <KapanHistory
-        rows={pagedRows}
-        totalCount={allKapanRows.length}
-        selectedKapan={activeKapan ? activeKapan.kapanNumber : ""}
-        onSelect={setSelectedKapan}
-        search={search}
-        onSearchChange={setSearch}
-        sort={sort}
-        onSortChange={setSort}
-        page={safePage}
-        pageCount={pageCount}
-        onPageChange={setPage}
-      />
-      <KapanDetail
-        kapan={activeKapan}
-        groupMode={groupMode}
-        onGroupModeChange={setGroupMode}
-      />
-    </div>
-  );
+  /* --------------------------------------------------------------- render */
+
+  if (status === "error") {
+    return (
+      <div className="app-shell">
+        <main className="workspace">
+          <div className="fatal-screen">
+            <h2>The saved data could not be opened</h2>
+            <p>{loadError}</p>
+            <p className="muted">
+              Nothing has been changed or deleted. Restore a backup, or contact
+              support before scanning anything else — starting fresh now would
+              overwrite whatever is still on this device.
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -410,13 +608,13 @@ const Index = () => {
           ))}
         </nav>
 
-        <div className="offline-card">
-          <p className="offline-title">
-            <IconWifi size={17} />
-            OFFLINE
-          </p>
-          <p className="offline-text">All data is stored locally on this device.</p>
-        </div>
+        <ConnectionCard
+          role={role}
+          connection={connection}
+          queuedCount={queuedCount}
+          hostStatus={hostStatus}
+          readOnly={readOnly}
+        />
 
         <p className="app-version">v{APP_VERSION}</p>
       </aside>
@@ -424,8 +622,18 @@ const Index = () => {
       <main className="workspace">
         <div className="topbar">
           <span className="topbar-item">
-            <i className="status-dot" aria-hidden="true" />
-            Offline Mode
+            <i
+              className={`status-dot ${
+                connection.status === "offline" || connection.status === "refused"
+                  ? "is-warn"
+                  : ""
+              }`}
+              aria-hidden="true"
+            />
+            {role === "client" && connection.status !== "online"
+              ? "Office PC unreachable"
+              : TOPBAR_LABEL[role] || "Offline Mode"}
+            {queuedCount > 0 ? ` · ${queuedCount} to sync` : ""}
           </span>
           <span className="topbar-divider" aria-hidden="true" />
           <span className="topbar-item">
@@ -436,6 +644,15 @@ const Index = () => {
           <button
             type="button"
             className="icon-button ghost"
+            title={canUndo ? "Undo the last change" : "Nothing to undo"}
+            disabled={!canUndo}
+            onClick={undo}
+          >
+            <IconUndo size={18} />
+          </button>
+          <button
+            type="button"
+            className="icon-button ghost"
             title="Settings"
             onClick={() => setActiveTab("settings")}
           >
@@ -443,63 +660,180 @@ const Index = () => {
           </button>
         </div>
 
-        <h2 className="page-title">{activeNav.title}</h2>
+        <h2 className="page-title">
+          {activeTab === "kapans" && openView
+            ? `Kapan ${openView.kapan.number}`
+            : activeNav.title}
+        </h2>
 
         {activeTab === "scan" && (
           <div className="screen-scan">
+            <ActiveLotBar
+              target={scanTarget}
+              onChange={() => setPickerMode("scan")}
+              onClear={() => persistActiveLot(null)}
+            />
+
             <div className="scan-grid">
               <ScanForm
                 scanInputRef={scanInputRef}
                 currentCode={currentCode}
                 onCurrentCodeChange={setCurrentCode}
-                onScanKeyDown={handleScanKeyDown}
+                onScanKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleScan();
+                  }
+                }}
                 previousCode={previousCode}
                 totals={sessionTotals}
                 recordCount={scanSession.length}
-                onSaveClick={() => setSaveModalOpen(true)}
+                onSaveClick={handleSaveToActiveLot}
+                saveLabel={
+                  scanTarget
+                    ? `Save to lot ${scanTarget.lot.lotNo}`
+                    : "Save Records"
+                }
               />
               <SessionTable
                 records={scanSession}
                 totals={sessionTotals}
                 onClearSession={handleClearSession}
-                onRemoveRecord={handleRemoveRecord}
+                onRemoveRecord={(id) => {
+                  persistSession(scanSession.filter((record) => record.id !== id));
+                  notify("Scan removed from the session.");
+                }}
               />
             </div>
-
-            {kapanPanels}
           </div>
         )}
 
-        {activeTab === "kapans" && <div className="screen-kapans">{kapanPanels}</div>}
+        {activeTab === "kapans" &&
+          (openView ? (
+            <KapanWorkbench
+              view={openView}
+              allKapans={allRows}
+              run={run}
+              onNotify={notify}
+              onConfirm={(request) =>
+                onConfirmRequest({
+                  ...request,
+                  onConfirm: () => {
+                    request.onConfirm();
+                    onConfirmClose();
+                  },
+                  onAlt: request.onAlt
+                    ? () => {
+                        request.onAlt();
+                        onConfirmClose();
+                      }
+                    : undefined,
+                })
+              }
+              onBack={() => setOpenKapanId(null)}
+              onSwitch={setOpenKapanId}
+              onEdit={(kapan) => setKapanForm({ kapan })}
+              onDelete={(kapan) => setDeleteTarget({ kapan, totals: openView.totals })}
+              onScanInto={() => setPickerMode("scan")}
+              onUndo={undo}
+              readOnly={readOnly}
+            />
+          ) : (
+            <KapanList
+              rows={listing.rows}
+              totals={listing.totals}
+              unfilteredCount={listing.unfilteredCount}
+              seasons={seasons}
+              season={season}
+              onSeasonChange={setSeason}
+              search={search}
+              onSearchChange={setSearch}
+              sort={sort}
+              onSortChange={setSort}
+              onOpen={setOpenKapanId}
+              onNew={() => setKapanForm({})}
+              readOnly={readOnly}
+            />
+          ))}
 
-        {activeTab === "reports" && <ReportsScreen kapanRows={allKapanRows} />}
+        {activeTab === "returns" && (
+          <ReturnsQueue
+            state={state}
+            run={run}
+            onNotify={notify}
+            onUndo={undo}
+            readOnly={readOnly}
+          />
+        )}
+
+        {activeTab === "reports" && <ReportsScreen state={state} />}
 
         {activeTab === "settings" && (
           <SettingsScreen
             settings={settings}
             onSettingsChange={persistSettings}
-            kapanRows={allKapanRows}
+            rows={allRows}
             sessionCount={scanSession.length}
             onClearSession={handleClearSession}
-            onDeleteKapan={handleDeleteKapan}
-            onDeleteAll={handleDeleteAll}
+            onDeleteKapan={(kapanId) => {
+              const row = allRows.find((item) => item.kapan.id === kapanId);
+              if (row) setDeleteTarget({ kapan: row.kapan, totals: row.totals });
+            }}
             appVersion={APP_VERSION}
+            role={role}
+            connection={connection}
+            queuedCount={queuedCount}
+            readOnly={readOnly}
+            notify={notify}
           />
         )}
       </main>
 
       {saveModalOpen && (
         <SaveModal
-          kapanNumber={kapanNumber}
-          onKapanNumberChange={setKapanNumber}
+          kapanRows={allRows}
           recordCount={scanSession.length}
           totals={sessionTotals}
-          existingKapans={existingKapanNumbers}
-          onCancel={() => {
-            setSaveModalOpen(false);
-            setKapanNumber("");
+          onCancel={() => setSaveModalOpen(false)}
+          onSave={handleSaveSession}
+        />
+      )}
+
+      {pickerMode && (
+        <LotPicker
+          kapanRows={allRows}
+          activeLotId={activeLotId}
+          mode={pickerMode}
+          onCancel={() => setPickerMode(null)}
+          onPick={({ kapanId, lotId }) => {
+            if (pickerMode === "jump") {
+              setOpenKapanId(kapanId);
+              setActiveTab("kapans");
+            } else {
+              persistActiveLot(lotId);
+              setActiveTab("scan");
+            }
+            setPickerMode(null);
           }}
-          onSave={handleSaveRecords}
+        />
+      )}
+
+      {kapanForm && (
+        <KapanFormModal
+          kapan={kapanForm.kapan}
+          seasons={seasons}
+          defaultSeason={selectDefaultSeason(state)}
+          onCancel={() => setKapanForm(null)}
+          onSubmit={submitKapanForm}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteKapanModal
+          kapan={deleteTarget.kapan}
+          totals={deleteTarget.totals}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDeleteKapan}
         />
       )}
 
@@ -508,8 +842,10 @@ const Index = () => {
           title={confirm.title}
           message={confirm.message}
           confirmLabel={confirm.confirmLabel}
-          onCancel={() => setConfirm(null)}
+          altLabel={confirm.altLabel}
+          onCancel={onConfirmClose}
           onConfirm={confirm.onConfirm}
+          onAlt={confirm.onAlt}
         />
       )}
 
@@ -517,7 +853,20 @@ const Index = () => {
         <div className={`toast tone-${toast.tone}`} role="status">
           {toast.tone === "error" ? <IconAlert size={17} /> : <IconCheck size={17} />}
           <span>{toast.text}</span>
-          <button type="button" onClick={() => setToast(null)} title="Dismiss">
+          {toast.undoable && canUndo && (
+            <button
+              type="button"
+              className="toast-undo"
+              onClick={() => {
+                undo();
+                onDismissToast();
+              }}
+            >
+              <IconUndo size={13} />
+              Undo
+            </button>
+          )}
+          <button type="button" onClick={onDismissToast} title="Dismiss">
             <IconClose size={14} />
           </button>
         </div>

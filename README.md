@@ -1,36 +1,247 @@
-# Getting Started with Create React App
+# Diamond QR
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Offline packet tracking for a diamond factory. Scans barcodes, keeps the
+production sheet, and prints the reports — on the factory's own PCs, with no
+internet connection and no cloud account.
 
-## Available Scripts
+The app reproduces the workbook the factory already keeps, column for column.
+That is deliberate: the sheet is the thing everyone in the office already knows
+how to read, so it stays the source of truth and the app is how it gets filled
+in without retyping.
 
-In the project directory, you can run:
+---
 
-### `npm start`
+## 1. The shape of the business
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+```
+Season  ────  a year's buying, e.g. "2024-25"
+  └─ Kapan  ────  one purchase of rough (કટ નંબર)
+       └─ Lot  ────  a parcel sent out to be cut and polished
+            └─ Packet  ────  one barcode scan
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+A **Kapan** is a purchase of rough diamond. It is broken into **lots**, each of
+which goes out to be worked on and comes back weeks later. A **packet** is a
+single scan: one physical packet of polished stones, weighed and recorded
+against the lot it belongs to.
 
-### `npm test`
+Everything the app shows is derived from packets and the figures typed against
+a lot. Nothing is stored twice, so no two screens can disagree.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### The thirteen columns
 
-### `npm run build`
+The lot sheet is the factory's own sheet. Left to right:
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+| # | Gujarati | Meaning | Where it comes from |
+|---|----------|---------|---------------------|
+| 1 | ક્રમ | Lot number | assigned, never reused |
+| 2 | તારીખ | Date sent out | typed |
+| 3 | નંગ | Pieces out | typed |
+| 4 | વજન | Rough weight | typed |
+| 5 | સારણી | Sieve / charmi | typed — **may be negative** |
+| 6 | તૈયાર વ. | Polished weight | **sum of scanned packets** |
+| 7 | ટકાવારી | Yield % | polished ÷ rough |
+| 8 | જ. નંગ | Pieces returned | typed |
+| 9 | જ.વજન | Weight returned | typed |
+| 10 | જ.ટકાવારી | Return % | returned ÷ polished |
+| 11 | ઘટ | Loss | polished − returned |
+| 12 | બા. નંગ | Missing pieces | pieces out − pieces returned |
+| 13 | જ.તારીખ | Date returned | typed |
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Only column 6 comes from scanning. Everything else is either typed or computed,
+and every computed figure lives in one file — [src/domain/totals.js](src/domain/totals.js).
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+**Two rules that look like bugs and are not:**
 
-### `npm run eject`
+- A **negative સારણી is normal.** The factory's own sheet is full of `-2`. So
+  in a cell, `+` is the only arithmetic operator — typing `-2` means the value
+  minus two, not "subtract two".
+- **Returned weight above polished weight is allowed.** That is exactly what a
+  negative ઘટ is, and the real sheet has such rows.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Missing pieces are also *not* the same as outstanding pieces. A lot that simply
+has not come back yet is outstanding, not lost, and the app never reports it as
+loss.
 
-# Diamond Qr code scanner
+---
+
+## 2. The screens
+
+| Screen | What it is for |
+|--------|----------------|
+| **Scan** | Point the scanner at packets. They land in the active lot. |
+| **Kapans** | The list of every Kapan by season, and the sheet for whichever one is open. |
+| **Returns** | Entering returns across every Kapan at once — three columns, tab straight down. |
+| **Reports** | All ten reports, one filter. |
+| **Settings** | This PC's role and name, the licence, backups. |
+
+Returns get their own screen because they arrive weeks after a lot goes out, and
+in the real sheet only about a third of rows have them filled. Hunting those
+rows inside a thirteen-column grid was the slow part of the day.
+
+### Keyboard
+
+The sheet is always in edit mode — there is no "click to edit" step. Every
+figure can be reached and typed without touching the mouse.
+
+| Key | Does |
+|-----|------|
+| `Ctrl`+`L` | Choose the lot to scan into — works from any screen |
+| `Ctrl`+`K` | Go to a Kapan or lot |
+| `Ctrl`+`D` | Copy the cell above |
+| `Ctrl`+`Z` | Undo |
+| `/` | Jump to the search box |
+| `Enter` | Save and move down |
+| `Tab` | Next field |
+| arrows | Move around the sheet |
+| `Esc` | Throw away what you were typing |
+
+`Ctrl`+`Z` in a half-typed cell throws away the typing; in a settled cell it
+undoes the last change to the data. Excel behaves the same way.
+
+Two typing shortcuts inside cells:
+
+- `+12` adds twelve to what is already there — for packets arriving in batches.
+- Dates take `5`, `5-8`, or `5-8-24`; the rest is filled in.
+
+---
+
+## 3. Reports
+
+Ten, sharing one filter (season, date range, Kapan):
+
+**By Kapan** — season summary, Kapan comparison
+**By lot** — all lots (the thirteen columns, any filter), yield by sieve, best & worst lots
+**Returns & loss** — returns pending, loss / missing pieces
+**Production** — daily production, packet log
+**Export** — the Excel sheet, in the workbook's own shape
+
+Yield by sieve exists because the numbers say it matters: across the factory's
+own data, yield climbs with the sieve size every single step of the way
+(−2 → 12.31%, 2 → 19.50%, 7 → 32.26%, 11 → 38.55%).
+
+Every report reads from `totals.js` and returns raw numbers — the screens do the
+rounding. That is what keeps a column total equal to the sum of the figures
+printed above it.
+
+---
+
+## 4. Several PCs
+
+One PC holds the data; the others read and write it over the office network.
+
+| Role | Meaning |
+|------|---------|
+| **Standalone** | One PC, its own data, no network. What a fresh install is. |
+| **Host** | Holds the data and serves the other PCs. |
+| **Client** | Works against the host's data over the LAN. |
+
+Set this in **Settings → This PC**. The app restarts when the role changes.
+
+**To set it up:** make the office PC the host. It shows its own address
+(`http://192.168.1.42:7311`) and a token. On each other PC, choose *Client* and
+type that address and token. The port defaults to **7311** and can be changed.
+
+The first time a host starts, Windows asks whether to allow the app on private
+networks — say yes, or the other PCs cannot reach it.
+
+A PC can also be set to **station** mode: it can scan, but not edit or delete.
+That is for the scanner by the window, where a stray keystroke should not be
+able to change a figure.
+
+**Clients keep working when the network drops.** Scans go into an outbox and are
+sent when the host comes back, so a switch being unplugged costs nobody their
+work.
+
+---
+
+## 5. Where the data lives
+
+In the Windows user-data folder, not in Program Files, so an app update never
+touches it:
+
+```
+%APPDATA%\Raj-QR-CODE-SCANNER\
+  snapshot.json     the state as of the last compaction
+  journal.jsonl     one change per line since then
+  snapshot.bak      the previous snapshot
+  backups\          a dated copy per day, newest 14 kept
+  device.json       what this PC is (role, name, token)
+```
+
+Every write is a line appended to the journal — small and instant. The snapshot
+is rewritten every 250 changes. Both the snapshot and each backup are written to
+a temporary file and renamed, because a half-written snapshot is the one failure
+that could lose everything. If a crash lands between truncating the journal and
+renaming the snapshot, the `.bak` is used and the app says so.
+
+`device.json` is deliberately outside the shared data. "I am the scan station by
+the window" is a fact about one computer, not about the factory's Kapans.
+
+**To back up:** copy the whole folder. Settings shows its exact path and can
+restore from a backup file.
+
+---
+
+## 6. Licensing
+
+Covered in full in [ADMIN-LICENSING.md](ADMIN-LICENSING.md) — key generation,
+issuing, seats, and what the customer sees. In short: an Ed25519-signed payload,
+verified offline, with an optional seat count. A key without a seat count is
+unlimited, so keys issued before seats existed keep working.
+
+The signing keys live in `tools/keys/` and **never ship** — §7a of the admin
+guide is the check that proves it.
+
+---
+
+## 7. Working on it
+
+```bash
+npm install
+npm run electron-dev     # React on :3001 plus Electron
+npm test                 # 413 tests
+npm run build            # production React build
+npm run dist             # Windows installer
+```
+
+### How the code is arranged
+
+Business rules are plain JavaScript with no React in them, so they can be tested
+directly and read without tracing a component tree.
+
+```
+src/domain/
+  model.js        shapes, factories, lot numbering, warnings
+  totals.js       every formula — the specification, in code
+  entry.js        parsing what someone types (+N, dates, negatives)
+  operations.js   eleven pure mutations, each returning its own undo
+  store.js        snapshot + journal, optimistic concurrency
+  selectors.js    reading the state
+  reports.js      the ten reports
+  format.js       numbers and dates to text
+  delta.js        reference-comparison diffs
+  sheetFixture.js 28 real rows of Kapan 41, used by the tests
+  ipcAdapter.js / remoteAdapter.js   local vs over-the-network
+
+src/hooks/useSheetCursor.js    grid movement, fill-down, undo
+src/store/                      adapter choice and React context
+
+public/db/       the host's durable store, and per-device config
+public/net/      the LAN server and address discovery
+public/main/     IPC registration, shared by the app and the test harness
+public/shared/   the delta format, used by both sides
+public/data-preload.js          the renderer's only bridge to its data
+```
+
+Two things worth knowing before changing any of it:
+
+- **Operations return their own inverse.** That is where undo comes from; it is
+  not a separate history mechanism. A new operation that does not return an
+  undo silently breaks `Ctrl`+`Z`.
+- **`totals.js` is the only place a formula may live.** A figure computed in a
+  component is a figure that will eventually disagree with the sheet.
+
+The renderer gets a fixed set of named channels and nothing else — no generic
+IPC, no Node. The licence channels are reachable only from the activation
+window.

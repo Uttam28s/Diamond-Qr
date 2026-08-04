@@ -8,6 +8,11 @@ const isDev = require("electron-is-dev");
 const license = require("./license");
 const codec = require("./license/codec");
 
+const deviceConfig = require("./db/config");
+const { createFileStore } = require("./db/fileStore");
+const { createServer } = require("./net/server");
+const { registerDataIpc } = require("./main/dataIpc");
+
 /** Shown to the user on the activation / "contact administrator" screen. */
 const SUPPORT = {
   name: "Zeonlabs",
@@ -19,6 +24,12 @@ let activationWindow = null;
 let licenseStatus = null;
 /** Set while we swap activation -> main window, so window-all-closed does not quit. */
 let switchingWindows = false;
+
+/** This PC's own database. Absent on a client, which reads the host's instead. */
+let dataStore = null;
+/** The LAN server, only in host mode. */
+let hostServer = null;
+let hostError = "";
 
 const dataDir = () => app.getPath("userData");
 
@@ -81,7 +92,11 @@ function createMainWindow() {
     backgroundColor: "#f4f6f7",
     icon: path.join(__dirname, "../assets/icon.png"),
     show: false,
-    webPreferences: baseWebPreferences(),
+    webPreferences: baseWebPreferences({
+      // The one bridge the app window gets: a fixed list of data and config
+      // calls, defined in data-preload.js. No generic IPC, no Node.
+      preload: path.join(__dirname, "data-preload.js"),
+    }),
   });
 
   mainWindow.setMenuBarVisibility(false);
@@ -146,6 +161,7 @@ async function boot() {
 
   switchingWindows = true;
   if (licenseStatus.state === "licensed") {
+    await openData();
     createMainWindow();
   } else {
     createActivationWindow();
@@ -155,7 +171,96 @@ async function boot() {
 }
 
 // ---------------------------------------------------------------------------
-// IPC -- only reachable from the activation window (the only one with a preload)
+// This PC's data, and the LAN server when it is the host
+// ---------------------------------------------------------------------------
+
+/**
+ * Opens the local database unless this PC is a client, and starts the server if it
+ * is the host.
+ *
+ * Failures are recorded rather than thrown. A host whose port is already taken
+ * should still open as a working single-PC app and say what went wrong, not refuse
+ * to start on a factory floor at seven in the morning.
+ */
+async function openData() {
+  const config = deviceConfig.load(dataDir());
+
+  if (config.role === deviceConfig.ROLES.CLIENT) {
+    // A client keeps no database of its own. Its unsent scans live in the
+    // renderer's own storage, which is where the outbox already is.
+    return;
+  }
+
+  dataStore = createFileStore({ dir: path.join(dataDir(), "data") });
+
+  try {
+    dataStore.load();
+  } catch (err) {
+    // Refusing to open beats opening empty beside data we could not read: the
+    // renderer shows the reason and nothing is overwritten.
+    hostError = err.message;
+    dataStore = null;
+    return;
+  }
+
+  // One dated copy per launch, before anything can be changed today.
+  try {
+    dataStore.backup();
+  } catch (err) {
+    console.warn("[data] backup failed:", err.message);
+  }
+
+  if (config.role !== deviceConfig.ROLES.HOST) return;
+
+  try {
+    hostServer = createServer({
+      store: dataStore,
+      token: config.serverToken || "",
+      seats: Number(licenseStatus && licenseStatus.seats) || 0,
+      onLog: (message) => console.log(message),
+    });
+    await hostServer.listen(config.serverPort, "0.0.0.0");
+    console.log("[net] host listening on " + config.serverPort);
+  } catch (err) {
+    hostServer = null;
+    hostError =
+      err && err.code === "EADDRINUSE"
+        ? "Port " + config.serverPort + " is already in use, so other PCs cannot connect. Another copy of the app may already be running, or pick a different port in Settings."
+        : "The host could not start: " + err.message;
+    console.warn("[net]", hostError);
+  }
+}
+
+function closeData() {
+  if (hostServer) {
+    hostServer.close();
+    hostServer = null;
+  }
+  dataStore = null;
+}
+
+// ---------------------------------------------------------------------------
+// IPC -- data and config, through the app window's narrow bridge
+// ---------------------------------------------------------------------------
+
+// Registered from a module so the end-to-end harness wires up the same handlers
+// this does, instead of a copy that can drift out of step with it.
+registerDataIpc({
+  ipcMain,
+  dataDir,
+  getStore: () => dataStore,
+  getServer: () => hostServer,
+  getError: () => hostError,
+  getSeats: () => Number(licenseStatus && licenseStatus.seats) || 0,
+  appInfo: () => ({ version: app.getVersion(), support: SUPPORT }),
+  relaunch: () => {
+    app.relaunch();
+    app.exit(0);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// IPC -- licence, reachable only from the activation window
 // ---------------------------------------------------------------------------
 
 ipcMain.handle("license:status", () => ({
@@ -250,6 +355,12 @@ if (!gotTheLock) {
 app.on("window-all-closed", () => {
   if (switchingWindows) return;
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  // Otherwise a lingering process keeps the port and the next launch reports it
+  // as already in use.
+  closeData();
 });
 
 app.on("activate", () => {

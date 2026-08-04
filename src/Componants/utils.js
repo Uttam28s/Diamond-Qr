@@ -1,6 +1,8 @@
 export const SESSION_STORAGE_KEY = "diamondQrScanSession";
 export const KAPAN_STORAGE_KEY = "diamondQrKapans";
 export const SETTINGS_STORAGE_KEY = "diamondQrSettings";
+/** Which lot this device is scanning into. Per-device, not shared data. */
+export const ACTIVE_LOT_KEY = "diamondQrActiveLot";
 
 export const DEFAULT_SETTINGS = {
   officeName: "Factory Office",

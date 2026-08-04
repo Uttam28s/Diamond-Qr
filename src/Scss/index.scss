@@ -1439,3 +1439,9 @@ tbody tr:hover .row-remove,
     width: 150px;
   }
 }
+
+/* Lots: the Kapan list, workbench and sheet. Imported last so the variables
+   declared at the top of this file are in scope. */
+@import "./sheet";
+@import "./phase3";
+@import "./reports";

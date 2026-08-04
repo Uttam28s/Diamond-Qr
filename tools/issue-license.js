@@ -15,6 +15,8 @@
  *   --to <name>            who this license is for (shown in the app's About/footer)
  *   --id <id>              your own reference id (default: auto AUTO-<n>)
  *   --expires <YYYY-MM-DD> optional expiry. Omit for a perpetual license.
+ *   --seats <n>            how many computers may use the data when this PC is the
+ *                          host, counting the host itself. Omit for unlimited.
  *   --verify <key>         check a license key's signature and print its contents
  */
 const fs = require("fs");
@@ -88,6 +90,7 @@ function verifyMode(key) {
   console.log(`  Issued to  : ${payload.to || "(unnamed)"}`);
   console.log(`  Issued at  : ${new Date(payload.iat).toISOString()}`);
   console.log(`  Expires    : ${payload.exp ? new Date(payload.exp).toISOString() : "never (perpetual)"}`);
+  console.log(`  Seats      : ${payload.seats ? `${payload.seats} computer(s)` : "unlimited"}`);
   console.log(`  Bound to   : ${Object.keys(payload.c).join(", ")}`);
   console.log("");
 }
@@ -138,6 +141,14 @@ function main() {
     exp = parsed.getTime();
   }
 
+  let seats = 0;
+  if (args.seats && args.seats !== true) {
+    seats = Number(args.seats);
+    if (!Number.isInteger(seats) || seats < 1 || seats > 99) {
+      die(`Could not read --seats "${args.seats}". Use a whole number from 1 to 99.`);
+    }
+  }
+
   const issued = readIssuedLog();
   const licenseId = args.id && args.id !== true ? args.id : `AUTO-${String(issued.length + 1).padStart(4, "0")}`;
 
@@ -148,6 +159,9 @@ function main() {
     to: args.to && args.to !== true ? args.to : null,
     iat: Date.now(),
     exp,
+    // Left out of the payload entirely when unlimited, so a single-PC key is
+    // byte-identical to what this tool produced before seats existed.
+    ...(seats ? { seats } : {}),
     c: components,
   };
 
@@ -158,6 +172,7 @@ function main() {
     to: payload.to,
     issuedAt: new Date(payload.iat).toISOString(),
     expires: exp ? new Date(exp).toISOString() : null,
+    seats: seats || "unlimited",
     boundTo: components,
     licenseKey,
   });
@@ -168,6 +183,7 @@ function main() {
   console.log(`  License id : ${licenseId}`);
   console.log(`  Issued to  : ${payload.to || "(unnamed)"}`);
   console.log(`  Expires    : ${exp ? new Date(exp).toISOString().slice(0, 10) : "never (perpetual)"}`);
+  console.log(`  Seats      : ${seats ? `${seats} computer(s)` : "unlimited"}`);
   console.log(`  Locked to  : ${Object.keys(components).join(", ")}`);
   console.log(`\n  Logged in ${path.relative(ROOT, ISSUED_LOG)}`);
   console.log("  Paste the key above into the app's activation screen on that computer.\n");

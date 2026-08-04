@@ -1,0 +1,393 @@
+/* ==========================================================================
+   Scan → lot binding: the active-lot bar, the lot picker and the packet tray
+   ========================================================================== */
+
+/* ------------------------------------------------------------- active bar */
+
+.active-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  margin-bottom: 14px;
+  border: 1px solid $border;
+  border-radius: $radius-sm;
+  background: $panel-bg;
+
+  &.is-set {
+    border-color: rgba($teal, 0.45);
+    background: $teal-tint;
+  }
+
+  kbd {
+    margin-left: 3px;
+  }
+}
+
+.active-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: $muted;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.active-none {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #96601a;
+}
+
+.active-spacer {
+  flex: 1 1 20px;
+}
+
+.lot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px 5px 11px;
+  border-radius: 999px;
+  background: $teal;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lot-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.34);
+  }
+}
+
+.badge-warn {
+  background: #fdf1de;
+  color: #96601a;
+}
+
+/* ------------------------------------------------------------- lot picker */
+
+.modal-picker {
+  width: min(560px, calc(100vw - 40px));
+  display: flex;
+  flex-direction: column;
+}
+
+.picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid $border;
+  color: $muted;
+
+  input {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    font-size: 15px;
+    color: $ink;
+
+    &:focus {
+      outline: 0;
+    }
+
+    &::placeholder {
+      color: $muted-light;
+    }
+  }
+}
+
+.picker-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.picker-row {
+  display: grid;
+  grid-template-columns: 64px 82px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: $radius-sm;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+
+  /* Highlight follows the keyboard, not the mouse, because this list is driven
+     with arrow keys while the other hand holds a scanner. */
+  &.is-active {
+    background: $teal;
+    color: #ffffff;
+
+    .picker-meta,
+    .picker-lot {
+      color: rgba(255, 255, 255, 0.85);
+    }
+  }
+}
+
+.picker-kapan {
+  font-weight: 700;
+}
+
+.picker-lot {
+  color: $ink-soft;
+}
+
+.picker-meta {
+  font-size: 12px;
+  color: $muted;
+
+  &.num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+}
+
+.picker-flag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.picker-row:not(.is-active) .picker-flag {
+  background: $teal-tint;
+  color: $teal-dark;
+}
+
+.picker-empty {
+  padding: 22px 14px;
+  text-align: center;
+  font-size: 13px;
+  color: $muted;
+}
+
+.picker-foot {
+  justify-content: space-between;
+}
+
+/* ------------------------------------------------------------------- tray */
+
+.tray {
+  margin-bottom: 12px;
+  border: 1px solid rgba($amber, 0.45);
+  border-radius: $radius-sm;
+  background: #fdf7ec;
+  overflow: hidden;
+}
+
+.tray-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 12.5px;
+  cursor: pointer;
+
+  &:hover {
+    background: #fbf1dd;
+  }
+}
+
+.tray-chevron {
+  display: inline-flex;
+  align-self: center;
+  color: #96601a;
+}
+
+.tray-body {
+  padding: 4px 12px 12px;
+  background: $panel-bg;
+  border-top: 1px solid rgba($amber, 0.35);
+}
+
+/* ----------------------------------------------------------- packet mover */
+
+.packet-mover {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.packet-table {
+  .select-cell {
+    width: 30px;
+    text-align: center;
+  }
+
+  tr.is-selected td {
+    background: $teal-tint;
+  }
+}
+
+.mover-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px dashed $border;
+  border-radius: $radius-sm;
+  background: $head-bg;
+
+  &.is-armed {
+    border-style: solid;
+    border-color: rgba($teal, 0.5);
+    background: $teal-tint;
+  }
+}
+
+.mover-count {
+  flex: 1 1 180px;
+  font-size: 12px;
+  color: $ink-soft;
+}
+
+/* ------------------------------------------------------- connection card */
+
+.conn-card {
+  margin: auto 14px 12px;
+  padding: 10px 12px;
+  border-radius: $radius-sm;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.conn-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: #9fd8d2;
+}
+
+.conn-text {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #a9c3c7;
+}
+
+.conn-badge {
+  margin-top: 7px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 10.5px;
+  color: #cfe4e6;
+}
+
+.conn-card.tone-warn {
+  border-color: rgba(229, 162, 60, 0.55);
+
+  .conn-title {
+    color: #f0be74;
+  }
+}
+
+.conn-card.tone-bad {
+  border-color: rgba(195, 61, 51, 0.6);
+
+  .conn-title {
+    color: #f0968c;
+  }
+}
+
+/* ---------------------------------------------------------- host settings */
+
+.settings-sub {
+  padding: 12px 14px;
+  margin: 4px 0 12px;
+  border-left: 3px solid $teal;
+  background: $head-bg;
+  border-radius: 0 $radius-sm $radius-sm 0;
+}
+
+.text-input.short {
+  max-width: 140px;
+}
+
+.restart-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  margin-bottom: 14px;
+  border: 1px solid rgba($amber, 0.5);
+  border-radius: $radius-sm;
+  background: #fdf7ec;
+  font-size: 12.5px;
+  color: #7c4f12;
+}
+
+.host-panel {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid $border;
+}
+
+.host-url {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 4px 0;
+
+  code {
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: $panel-bg;
+    border: 1px solid $border;
+    font-size: 13px;
+    font-weight: 600;
+    color: $teal-dark;
+  }
+}
+
+.client-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 0;
+    font-size: 12.5px;
+    border-bottom: 1px solid $border-soft;
+  }
+
+  li:last-child {
+    border-bottom: 0;
+  }
+}
+
+.status-dot.is-warn {
+  background: #e5a23c;
+}

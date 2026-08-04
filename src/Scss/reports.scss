@@ -1,0 +1,258 @@
+/* ==========================================================================
+   The Reports hub and the Returns screen
+   ========================================================================== */
+
+/* ------------------------------------------------------------- filter bar */
+
+.report-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  margin-bottom: 14px;
+  border: 1px solid $border;
+  border-radius: $radius-sm;
+  background: $panel-bg;
+}
+
+.filter-dates {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: $muted;
+
+  label {
+    color: $muted;
+  }
+}
+
+.text-input.tiny {
+  width: 108px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.filter-spacer {
+  flex: 1 1 20px;
+}
+
+/* ------------------------------------------------------------------- rail */
+
+.report-layout {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+
+  @media (max-width: 1000px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.report-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  border: 1px solid $border;
+  border-radius: $radius-sm;
+  background: $panel-bg;
+  position: sticky;
+  top: 0;
+
+  @media (max-width: 1000px) {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+.rail-group {
+  padding: 9px 8px 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: $muted-light;
+
+  @media (max-width: 1000px) {
+    display: none;
+  }
+}
+
+.rail-item {
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: $radius-sm;
+  text-align: left;
+  cursor: pointer;
+  color: $ink-soft;
+
+  b {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  small {
+    display: block;
+    font-size: 11px;
+    color: $muted-light;
+  }
+
+  &:hover {
+    background: $head-bg;
+  }
+
+  &.is-active {
+    background: $teal;
+    color: #ffffff;
+
+    small {
+      color: rgba(255, 255, 255, 0.78);
+    }
+  }
+
+  @media (max-width: 1000px) {
+    width: auto;
+
+    small {
+      display: none;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------- content */
+
+.report-main {
+  min-width: 0;
+  padding-bottom: 4px;
+}
+
+.report-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  min-width: 0;
+}
+
+.report-tiles {
+  margin-bottom: 0;
+}
+
+.report-note {
+  font-size: 12px;
+  color: $muted;
+  line-height: 1.5;
+}
+
+.report-sub {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: $muted;
+}
+
+.report-table {
+  tbody td {
+    padding: 6px 9px;
+  }
+}
+
+.two-report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+/* Bars are sized against the largest value in the report, so the shape of the
+   distribution is readable without reading every number. */
+.bar-track {
+  height: 14px;
+  border-radius: 3px;
+  background: $head-bg;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: $teal;
+}
+
+/* ------------------------------------------------------------ sheet preview */
+
+.sheet-preview {
+  font-size: 12px;
+
+  td {
+    padding: 4px 9px;
+    border-right: 1px solid $border-soft;
+  }
+
+  tr.spacer-row td {
+    background: $head-bg;
+  }
+
+  /* The workbook's own header block, which is label/value pairs rather than a
+     table with a header row. */
+  tr:first-child td:first-child,
+  tr td:first-child {
+    font-weight: 600;
+    color: $ink-soft;
+  }
+}
+
+/* ---------------------------------------------------------------- returns */
+
+.returns-panel {
+  padding-bottom: 12px;
+
+  .panel-tools {
+    flex-wrap: wrap;
+  }
+
+  .sheet-scroll {
+    max-height: calc(100vh - 260px);
+  }
+}
+
+.returns-table {
+  th.is-entry-head {
+    background: $teal-tint;
+    color: $teal-dark;
+
+    .th-guj {
+      color: $teal-dark;
+    }
+  }
+
+  /* A completed row stays put and goes quiet, rather than vanishing from under
+     the cursor mid-typing. */
+  tr.is-done {
+    td {
+      opacity: 0.62;
+    }
+
+    .kapan-cell {
+      opacity: 1;
+      color: $muted;
+    }
+  }
+
+  .sheet-hint {
+    padding-top: 10px;
+  }
+}
+
+.button.is-on {
+  background: $teal-tint;
+  border-color: rgba($teal, 0.5);
+  color: $teal-dark;
+}

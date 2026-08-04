@@ -265,3 +265,38 @@ export const IconAlert = (p) => (
     <circle cx="12" cy="16" r="0.9" fill="currentColor" stroke="none" />
   </Svg>
 );
+
+export const IconPlus = (p) => (
+  <Svg {...p} strokeWidth={2.1}>
+    <path d="M12 5.5v13M5.5 12h13" />
+  </Svg>
+);
+
+export const IconUndo = (p) => (
+  <Svg {...p}>
+    <path d="M4 9h11a4.5 4.5 0 0 1 0 9H9" />
+    <path d="M7.5 5.5 4 9l3.5 3.5" />
+  </Svg>
+);
+
+export const IconEdit = (p) => (
+  <Svg {...p}>
+    <path d="M4 20h4l10-10-4-4L4 16z" />
+    <path d="M13.5 6.5 17.5 10.5" />
+  </Svg>
+);
+
+export const IconArrowLeft = (p) => (
+  <Svg {...p}>
+    <path d="M19 12H5" />
+    <path d="M11 6l-6 6 6 6" />
+  </Svg>
+);
+
+export const IconLayers = (p) => (
+  <Svg {...p}>
+    <path d="M12 3.5 4 8l8 4.5L20 8z" />
+    <path d="M4 12.5 12 17l8-4.5" />
+    <path d="M4 16.5 12 21l8-4.5" />
+  </Svg>
+);

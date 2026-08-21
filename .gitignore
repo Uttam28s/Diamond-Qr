@@ -38,3 +38,13 @@ package-lock.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Customer data -- NEVER commit this either.
+# A backup exported from the app is a factory's entire production record: every
+# Kapan, lot and packet with its weights. Support work means these files land in
+# the working tree, and `git add .` is one keystroke.
+/diamond-qr-backup-*.json
+/diamond-qr-*.json
+/snapshot.json
+/journal.jsonl
+/data/

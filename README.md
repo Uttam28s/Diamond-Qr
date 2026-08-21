@@ -185,10 +185,42 @@ across and leaves the original in place; see
 [public/main/migrateUserData.js](public/main/migrateUserData.js) and its tests.
 
 Every write is a line appended to the journal — small and instant. The snapshot
-is rewritten every 250 changes. Both the snapshot and each backup are written to
-a temporary file and renamed, because a half-written snapshot is the one failure
-that could lose everything. If a crash lands between truncating the journal and
-renaming the snapshot, the `.bak` is used and the app says so.
+is rewritten every 250 changes **or every 8 MB of journal, whichever comes
+first**. Both the snapshot and each backup are written to a temporary file and
+renamed, because a half-written snapshot is the one failure that could lose
+everything. If a crash lands between truncating the journal and renaming the
+snapshot, the `.bak` is used and the app says so.
+
+### "The saved data could not be opened"
+
+Reported once, from a factory PC, as `Cannot create a string longer than
+0x1fffffe8 characters`. That number is V8's ceiling on a single string, about
+512 MB, and it means the journal had grown past what could be read in one piece.
+Two faults, both fixed in 2.2.2:
+
+- The renderer sent its **whole state** across IPC on every save. Electron clones
+  everything crossing that boundary, so the host shared no row objects with what
+  it was sent — and the host decides what changed by row identity. Every scan
+  therefore recorded the entire dataset. On the reported install, **199 scans made
+  546 MB of journal.** The renderer now sends only what it changed
+  ([src/domain/ipcAdapter.js](src/domain/ipcAdapter.js)), which is ~0.3 KB per
+  scan against ~600 KB before.
+- Compaction was triggered by line count alone, which is no ceiling on file size,
+  and the journal was read with one `readFileSync`. It is now read in 4 MB chunks
+  and compacted on bytes too.
+
+**Nothing was lost in that failure and nothing needs deleting.** 2.2.2 folds an
+oversized journal into the snapshot on first launch. To do it by hand instead —
+to see the numbers before touching anything, or to work on a copy:
+
+```sh
+npm run recover:journal                       # inspect; changes nothing
+npm run recover:journal -- --dir "D:\copy\data" --out rebuilt.json
+npm run recover:journal -- --write            # repair in place, app closed
+```
+
+`--write` keeps the originals in a dated `recovered-<stamp>` folder beside the
+data and writes an extra copy into `backups\`. It never deletes anything.
 
 `device.json` is deliberately outside the shared data. "I am the scan station by
 the window" is a fact about one computer, not about the factory's Kapans.
@@ -223,12 +255,14 @@ the firewall gets in the way: **[INSTALL.md](INSTALL.md)**.
 ```bash
 npm install
 npm run electron-dev     # the UI on :3001 plus the desktop shell
-npm test                 # 427 tests
+npm test                 # 469 tests
 npm run build            # production build, then hardened (see below)
 npm run smoke            # loads the built bundle in a real window and checks it
 npm run test:activation  # boots the real main process and activates a fresh PC
+npm run test:journal     # saves through the real bridge and weighs the journal
 npm run dist             # Windows installer
 npm run verify:package   # inspects the installed package for leaks
+npm run recover:journal  # rebuilds a snapshot from an oversized journal
 npm run icon             # redraws the app icon at every size
 ```
 

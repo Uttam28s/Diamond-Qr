@@ -99,12 +99,31 @@ const computeDelta = (previous, next) => {
 const applyDelta = (state, delta) => {
   if (!delta) return state;
 
-  const next = {
-    schema: state.schema,
-    kapans: { ...state.kapans },
-    lots: { ...state.lots },
-    packets: { ...state.packets },
-  };
+  // Copied first, then filled in place - so the two functions cannot drift on
+  // what a delta means.
+  return applyDeltaInPlace(
+    {
+      schema: state.schema,
+      kapans: { ...state.kapans },
+      lots: { ...state.lots },
+      packets: { ...state.packets },
+    },
+    delta
+  );
+};
+
+/**
+ * Applies a delta by writing into `next`, and returns it.
+ *
+ * For replaying a journal onto a state nobody else is holding yet, and for
+ * nothing else. `applyDelta` above copies per call, which is right for a live
+ * state and quadratic for a replay: a journal of n commits would copy every row
+ * n times, so a long journal takes minutes rather than the fraction of a second
+ * the same file takes here. Both are the same rules, applied to a copy or to the
+ * thing itself.
+ */
+const applyDeltaInPlace = (next, delta) => {
+  if (!delta) return next;
 
   TABLES.forEach((table) => {
     const upserts = (delta.upserts && delta.upserts[table]) || {};
@@ -175,6 +194,7 @@ module.exports = {
   emptyDelta,
   computeDelta,
   applyDelta,
+  applyDeltaInPlace,
   isAdditiveOnly,
   countRows,
 };

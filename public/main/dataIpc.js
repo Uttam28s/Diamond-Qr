@@ -58,6 +58,32 @@ const registerDataIpc = ({
     return { ok: true, state: store.getState(), version: store.getVersion() };
   });
 
+  /**
+   * The renderer's own change, already reduced to a delta on its side.
+   *
+   * It has to be reduced there. Electron structured-clones everything crossing
+   * this boundary, so a whole state arriving here shares not one row object with
+   * the state the store holds - and the store's delta is computed by row
+   * identity. `data:save` below therefore wrote the entire dataset per keystroke,
+   * which grew one customer's journal past the half-gigabyte a JS string can
+   * hold and left the app unable to open its own data.
+   */
+  ipcMain.handle("data:commit", (event, delta) => {
+    const store = getStore();
+    if (!store) return noStore();
+    try {
+      const saved = store.commit(delta);
+      return { ok: true, version: saved.version };
+    } catch (err) {
+      return { ok: false, error: `Saving to disk failed: ${err.message}` };
+    }
+  });
+
+  /**
+   * Whole-state save. Still here because a renderer that predates `data:commit`
+   * is a possibility during an upgrade, and because failing a save is worse than
+   * writing too much. Nothing in the current app reaches it.
+   */
   ipcMain.handle("data:save", (event, state) => {
     const store = getStore();
     if (!store) return noStore();

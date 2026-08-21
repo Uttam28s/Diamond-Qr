@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld("diamondQR", {
   /* ------------------------------------------------ this PC's own database */
   data: {
     load: () => ipcRenderer.invoke("data:load"),
+    // What a commit changed, not the whole dataset. See dataIpc.js for why the
+    // difference is not merely an optimisation.
+    commit: (delta) => ipcRenderer.invoke("data:commit", delta),
     save: (state) => ipcRenderer.invoke("data:save", state),
     backup: () => ipcRenderer.invoke("data:backup"),
     stats: () => ipcRenderer.invoke("data:stats"),

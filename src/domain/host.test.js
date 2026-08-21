@@ -12,10 +12,15 @@ const os = require("os");
 const path = require("path");
 const http = require("http");
 
-const { createFileStore, COMPACT_AFTER } = require("../../public/db/fileStore");
+const {
+  createFileStore,
+  COMPACT_AFTER,
+  COMPACT_BYTES,
+} = require("../../public/db/fileStore");
 const { createServer } = require("../../public/net/server");
 const {
   applyDelta,
+  applyDeltaInPlace,
   computeDelta,
   isAdditiveOnly,
 } = require("../../public/shared/delta");
@@ -160,6 +165,33 @@ describe("deltas", () => {
     });
 
     expect(applyDelta(before, computeDelta(before, after))).toEqual(after);
+  });
+
+  /**
+   * The journal is replayed with the in-place variant, because copying the whole
+   * state per line turns a long journal into a load that takes minutes. It has to
+   * mean exactly what the copying one means, or a reopen would disagree with the
+   * app that wrote the file.
+   */
+  it("means the same thing applied in place as applied to a copy", () => {
+    const before = () =>
+      stateWith({
+        kapans: { k1: kapan("k1", "41"), k2: kapan("k2", "42") },
+        lots: { l1: lot("l1", "k1", 1, 142), l2: lot("l2", "k1", 2, 140) },
+        packets: { p1: packet("p1", "k1", "l1", 1, 0.2) },
+      });
+
+    const delta = {
+      upserts: {
+        kapans: {},
+        lots: { l2: { ...lot("l2", "k1", 2, 140), charmi: 9 } },
+        packets: { p2: packet("p2", "k1", "l1", 1.1, 0.3) },
+      },
+      deletes: { kapans: ["k2"], lots: [], packets: ["p1"] },
+      counters: { lots: { l1: 4 } },
+    };
+
+    expect(applyDeltaInPlace(before(), delta)).toEqual(applyDelta(before(), delta));
   });
 
   it("does not mutate the state it is applied to", () => {
@@ -341,6 +373,274 @@ describe("the host store on disk", () => {
 
     store.save(state);
     expect(store.getVersion()).toBe(afterChange);
+  });
+});
+
+/* ========================================================================
+   A journal that got big
+
+   The customer-facing failure these cover: builds before 2.2.2 wrote the whole
+   dataset per save, the journal passed the ~512 MB ceiling on a JavaScript
+   string, and the app stopped opening with "Cannot create a string longer than
+   0x1fffffe8 characters".
+   ======================================================================== */
+
+describe("a journal larger than one read", () => {
+  let dir;
+  beforeEach(() => {
+    dir = tempDir();
+  });
+
+  /** Enough padding that a handful of lines cross the 4 MB read chunk. */
+  const bulky = (id) => ({
+    ...packet(id, "k1", null, 1, 0.2),
+    notes: "x".repeat(300 * 1024),
+  });
+
+  it("reads a multi-megabyte journal a chunk at a time rather than as one string", () => {
+    const store = createFileStore({ dir });
+    store.load();
+
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+    // Folded into the snapshot first: the journal is about to be replaced by
+    // hand, and the Kapan has to survive that to prove the replay kept it.
+    store.compact();
+
+    // Written by hand so the store's own compaction does not tidy it away before
+    // the read under test happens.
+    const lines = [];
+    for (let index = 0; index < 24; index += 1) {
+      lines.push(
+        JSON.stringify({
+          upserts: { kapans: {}, lots: {}, packets: { [`p${index}`]: bulky(`p${index}`) } },
+          deletes: { kapans: [], lots: [], packets: [] },
+          counters: { lots: {} },
+        })
+      );
+    }
+    fs.writeFileSync(path.join(dir, "journal.jsonl"), `${lines.join("\n")}\n`, "utf8");
+    expect(fs.statSync(path.join(dir, "journal.jsonl")).size).toBeGreaterThan(4 * 1024 * 1024);
+
+    const reopened = createFileStore({ dir }).load();
+    expect(Object.keys(reopened.packets)).toHaveLength(24);
+    expect(reopened.kapans.k1.number).toBe("41");
+  });
+
+  it("keeps characters intact across a read boundary", () => {
+    const store = createFileStore({ dir });
+    store.load();
+
+    // Three bytes each, so any of them can straddle a chunk edge.
+    const label = "નંગ કાપણ";
+    const lines = [];
+    for (let index = 0; index < 24; index += 1) {
+      lines.push(
+        JSON.stringify({
+          upserts: {
+            kapans: {},
+            lots: {},
+            packets: { [`p${index}`]: { ...bulky(`p${index}`), label } },
+          },
+          deletes: { kapans: [], lots: [], packets: [] },
+          counters: { lots: {} },
+        })
+      );
+    }
+    fs.writeFileSync(path.join(dir, "journal.jsonl"), `${lines.join("\n")}\n`, "utf8");
+
+    const reopened = createFileStore({ dir }).load();
+    expect(Object.keys(reopened.packets)).toHaveLength(24);
+    Object.values(reopened.packets).forEach((row) => expect(row.label).toBe(label));
+  });
+
+  it("folds an oversized journal into the snapshot on load, losing nothing", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+    store.compact();
+
+    const lines = [];
+    for (let index = 0; index < 40; index += 1) {
+      lines.push(
+        JSON.stringify({
+          upserts: { kapans: {}, lots: {}, packets: { [`p${index}`]: bulky(`p${index}`) } },
+          deletes: { kapans: [], lots: [], packets: [] },
+          counters: { lots: {} },
+        })
+      );
+    }
+    fs.writeFileSync(path.join(dir, "journal.jsonl"), `${lines.join("\n")}\n`, "utf8");
+
+    const reopened = createFileStore({ dir });
+    const loaded = reopened.load();
+
+    expect(Object.keys(loaded.packets)).toHaveLength(40);
+    expect(loaded.kapans.k1.number).toBe("41");
+    // The journal has been folded away, so the next launch is cheap.
+    expect(fs.statSync(path.join(dir, "journal.jsonl")).size).toBe(0);
+    // And the state that was folded is really in the snapshot now.
+    expect(
+      Object.keys(JSON.parse(fs.readFileSync(path.join(dir, "snapshot.json"), "utf8")).packets)
+    ).toHaveLength(40);
+    // Nothing was thrown away doing it.
+    expect(Object.keys(createFileStore({ dir }).load().packets)).toHaveLength(40);
+  });
+
+  it("still opens when the fold itself cannot be written", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+    store.compact();
+
+    const lines = [];
+    for (let index = 0; index < 40; index += 1) {
+      lines.push(
+        JSON.stringify({
+          upserts: { kapans: {}, lots: {}, packets: { [`p${index}`]: bulky(`p${index}`) } },
+          deletes: { kapans: [], lots: [], packets: [] },
+          counters: { lots: {} },
+        })
+      );
+    }
+    fs.writeFileSync(path.join(dir, "journal.jsonl"), `${lines.join("\n")}\n`, "utf8");
+
+    // A disk with nothing left on it. The data replayed fine; the tidy-up cannot
+    // be what stops the factory working.
+    const full = jest.spyOn(fs, "writeFileSync").mockImplementation(() => {
+      throw new Error("no space left on device");
+    });
+
+    const loaded = createFileStore({ dir }).load();
+    full.mockRestore();
+
+    expect(Object.keys(loaded.packets)).toHaveLength(40);
+    expect(loaded.kapans.k1.number).toBe("41");
+    // Nothing was truncated, so the journal is still there to fold next time.
+    expect(fs.statSync(path.join(dir, "journal.jsonl")).size).toBeGreaterThan(0);
+  });
+
+  it("leaves a journal with a hole in the middle alone for support to look at", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") } }));
+
+    const good = (index) =>
+      JSON.stringify({
+        upserts: { kapans: {}, lots: {}, packets: { [`p${index}`]: bulky(`p${index}`) } },
+        deletes: { kapans: [], lots: [], packets: [] },
+        counters: { lots: {} },
+      });
+
+    const lines = [];
+    for (let index = 0; index < 40; index += 1) {
+      lines.push(index === 12 ? '{"upserts":{"packets":{"pX"' : good(index));
+    }
+    fs.writeFileSync(path.join(dir, "journal.jsonl"), `${lines.join("\n")}\n`, "utf8");
+
+    const loaded = createFileStore({ dir }).load();
+    expect(Object.keys(loaded.packets)).toHaveLength(39);
+    // Not folded away: the evidence stays on disk.
+    expect(fs.statSync(path.join(dir, "journal.jsonl")).size).toBeGreaterThan(0);
+  });
+
+  it("compacts on size, not just on line count", () => {
+    const store = createFileStore({ dir });
+    store.load();
+
+    let state = stateWith({ kapans: { k1: kapan("k1", "41") } });
+    store.save(state);
+
+    // Far fewer commits than COMPACT_AFTER, but well past the byte ceiling.
+    for (let index = 0; index < 40; index += 1) {
+      state = {
+        ...state,
+        packets: { ...state.packets, [`p${index}`]: bulky(`p${index}`) },
+      };
+      store.save(state);
+    }
+
+    expect(store.stats().journalLines).toBeLessThan(COMPACT_AFTER);
+    expect(fs.statSync(path.join(dir, "journal.jsonl")).size).toBeLessThan(COMPACT_BYTES);
+    expect(Object.keys(createFileStore({ dir }).load().packets)).toHaveLength(40);
+  });
+});
+
+describe("committing a delta the caller already has", () => {
+  let dir;
+  beforeEach(() => {
+    dir = tempDir();
+  });
+
+  it("records exactly that delta and applies it", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") }, lots: { l1: lot("l1", "k1", 1, 5) } }));
+
+    const result = store.commit({
+      upserts: { kapans: {}, lots: {}, packets: { p1: packet("p1", "k1", "l1", 1, 0.2) } },
+      deletes: { kapans: [], lots: [], packets: [] },
+      counters: { lots: { l1: 1 } },
+    });
+
+    expect(result.state.packets.p1).toBeTruthy();
+    expect(result.state.lots.l1.pcs).toBe(6);
+
+    const journal = fs.readFileSync(path.join(dir, "journal.jsonl"), "utf8").trim().split("\n");
+    // One line for the save above, one for the commit - and the commit's line
+    // carries one packet, not the whole dataset.
+    expect(journal).toHaveLength(2);
+    expect(Object.keys(JSON.parse(journal[1]).upserts.packets)).toEqual(["p1"]);
+
+    const reopened = createFileStore({ dir }).load();
+    expect(reopened.lots.l1.pcs).toBe(6);
+    expect(reopened.packets.p1).toBeTruthy();
+  });
+
+  /**
+   * The rule the whole store exists to keep: a write that did not happen is
+   * never treated as one that did. If a full disk left the store believing it
+   * had recorded a commit, the NEXT commit would be measured from a state that
+   * is not on disk, and the rows in between would be gone with nobody told.
+   */
+  it("treats a failed write as a write that did not happen", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    store.save(stateWith({ kapans: { k1: kapan("k1", "41") }, lots: { l1: lot("l1", "k1", 1, 5) } }));
+
+    const before = store.getVersion();
+    const full = jest.spyOn(fs, "appendFileSync").mockImplementation(() => {
+      const error = new Error("no space left on device");
+      error.code = "ENOSPC";
+      throw error;
+    });
+
+    const lost = {
+      upserts: { kapans: {}, lots: {}, packets: { p1: packet("p1", "k1", "l1", 1, 0.2) } },
+      deletes: { kapans: [], lots: [], packets: [] },
+      counters: { lots: { l1: 1 } },
+    };
+
+    expect(() => store.commit(lost)).toThrow(/no space/);
+    // Nothing moved: not the version, not the count, not the rows.
+    expect(store.getVersion()).toBe(before);
+    expect(store.getState().packets.p1).toBeUndefined();
+    expect(store.getState().lots.l1.pcs).toBe(5);
+
+    full.mockRestore();
+
+    // And when the disk comes back, the same commit still lands.
+    store.commit(lost);
+    const reopened = createFileStore({ dir }).load();
+    expect(reopened.packets.p1).toBeTruthy();
+    expect(reopened.lots.l1.pcs).toBe(6);
+  });
+
+  it("is a no-op for an empty delta", () => {
+    const store = createFileStore({ dir });
+    store.load();
+    const before = store.getVersion();
+    expect(store.commit(null).version).toBe(before);
+    expect(fs.existsSync(path.join(dir, "journal.jsonl"))).toBe(false);
   });
 });
 

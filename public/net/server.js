@@ -20,7 +20,7 @@
  */
 
 const http = require("http");
-const { applyDelta, countRows, isAdditiveOnly } = require("../shared/delta");
+const { countRows, isAdditiveOnly } = require("../shared/delta");
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_DELTA_ROWS = 20000;
@@ -162,8 +162,10 @@ const createServer = ({ store, token = "", seats = 0, onLog }) => {
           return;
         }
 
-        const next = applyDelta(store.getState(), delta);
-        const saved = store.save(next);
+        // Handed to the store as the delta it already is. Asking it to work out
+        // what changed by comparing whole states would walk every row on the host
+        // for each packet a scan station files.
+        const saved = store.commit(delta);
 
         log(
           `[net] commit from ${deviceName || "unknown"}: ${countRows(delta)} row(s), v${saved.version}`

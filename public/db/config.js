@@ -44,6 +44,10 @@ const defaults = () => ({
   hostToken: "",
   serverPort: DEFAULT_PORT,
   serverToken: "",
+  // Where a copy of each daily backup goes, so the records are not all on one
+  // desk in one room. A folder Windows already syncs (OneDrive, Google Drive) or
+  // a network drive or USB stick. Empty means off.
+  backupFolder: "",
 });
 
 const load = (dir) => {
@@ -91,6 +95,7 @@ const update = (dir, patch = {}) => {
     "hostToken",
     "serverPort",
     "serverToken",
+    "backupFolder",
   ];
 
   const after = { ...before };
@@ -106,6 +111,9 @@ const update = (dir, patch = {}) => {
   }
 
   after.deviceName = `${after.deviceName || ""}`.trim().slice(0, 40) || before.deviceName;
+  // Not checked for existence: a USB stick that is out today is still the right
+  // answer for tomorrow, and refusing to remember it would be unhelpful.
+  after.backupFolder = `${after.backupFolder || ""}`.trim();
 
   if (after.role === ROLES.CLIENT) {
     const address = normalizeAddress(after.hostAddress);

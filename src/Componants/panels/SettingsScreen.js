@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import Cols from "./Cols";
 import DeviceSettings from "./DeviceSettings";
+import OffsiteBackup from "./OffsiteBackup";
 import { IconAlert, IconDownload, IconSettings, IconTrash } from "../Icons";
 import { useStore } from "../../store/StoreContext";
 import { formatDay, formatInt, formatWeight } from "../../domain/format";
@@ -123,6 +124,8 @@ const SettingsScreen = ({
               Export backup
             </button>
           </div>
+
+          <OffsiteBackup role={role} notify={notify} />
 
           <div className="settings-row">
             <div>

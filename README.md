@@ -229,6 +229,44 @@ the window" is a fact about one computer, not about the factory's Kapans.
 restore from a backup file. Only the host holds data — backing up a client
 achieves nothing.
 
+### The copy that is not on this PC
+
+Everything above protects the data from software. None of it survives the PC
+being stolen, drowned, or simply dying — and until 2.2.2 every copy of a
+factory's production record lived on one disk in one room.
+
+**Settings → Data Management → Off-site copy** takes a folder. After every
+backup, a copy goes there:
+
+```
+<the chosen folder>\Diamond QR Backups\<this PC>\diamond-qr-2026-08-21.json
+```
+
+A OneDrive or Google Drive folder that Windows is already syncing, a mapped
+network drive, or a USB stick — all work, and all are free. Roughly 5 MB a day
+against a free 5–15 GB, with the newest 30 kept.
+
+A folder rather than an account was the deliberate choice. Moving the database
+itself to a free cloud tier was on the table and was rejected: this dataset is
+2.7 MB and grows about 50 MB a year, so nothing here needs a database service —
+and it would have bought an account to own, a bill to eventually pay, a free
+tier that pauses after a week of inactivity, and a factory floor that stops
+working when the line goes down. Syncing a file to a folder somebody else is
+already syncing has none of those failure modes.
+
+Two rules in [public/db/offsite.js](public/db/offsite.js), because the folder
+belongs to the user:
+
+- Everything is written inside our own per-device subfolder. Two PCs backing up
+  into one Drive account cannot overwrite each other, and a device name cannot
+  steer that path anywhere else — it names a folder in a directory where old
+  copies get pruned.
+- Pruning only ever deletes files in that subfolder matching the names we write.
+  Anything else in there is not ours to tidy.
+
+It never throws. A USB stick that is not plugged in is a message on the Settings
+screen and a retry at the next launch, never a reason the app will not open.
+
 ---
 
 ## 6. Licensing
@@ -255,14 +293,16 @@ the firewall gets in the way: **[INSTALL.md](INSTALL.md)**.
 ```bash
 npm install
 npm run electron-dev     # the UI on :3001 plus the desktop shell
-npm test                 # 469 tests
+npm test                 # 480 tests
 npm run build            # production build, then hardened (see below)
 npm run smoke            # loads the built bundle in a real window and checks it
 npm run test:activation  # boots the real main process and activates a fresh PC
 npm run test:journal     # saves through the real bridge and weighs the journal
+npm run test:offsite     # sets up an off-site folder through the real bridge
 npm run dist             # Windows installer
 npm run verify:package   # inspects the installed package for leaks
 npm run recover:journal  # rebuilds a snapshot from an oversized journal
+npm run check:backup     # is that backup file actually restorable?
 npm run icon             # redraws the app icon at every size
 ```
 

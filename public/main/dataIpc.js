@@ -11,6 +11,7 @@
  */
 
 const deviceConfig = require("../db/config");
+const { mirrorBackup, mirrorStatus } = require("../db/offsite");
 const { connectUrls } = require("../net/address");
 
 /**
@@ -22,6 +23,7 @@ const { connectUrls } = require("../net/address");
  * @param getSeats   () => how many computers the licence allows
  * @param appInfo    () => ({ version, support })
  * @param relaunch   () => restart the app
+ * @param chooseFolder () => Promise<string> folder picker, "" if cancelled
  */
 const registerDataIpc = ({
   ipcMain,
@@ -32,6 +34,7 @@ const registerDataIpc = ({
   getSeats = () => 0,
   appInfo = () => ({}),
   relaunch = () => {},
+  chooseFolder = async () => "",
 }) => {
   const noStore = () => ({
     ok: false,
@@ -98,14 +101,42 @@ const registerDataIpc = ({
     }
   });
 
+  /**
+   * A dated backup on this PC, and a copy of it in the owner's off-site folder if
+   * one is set. Both together, because "back up" meaning "write another copy to
+   * the disk that is about to die" is not what anybody asking for a backup wants.
+   */
   ipcMain.handle("data:backup", () => {
     const store = getStore();
     if (!store) return noStore();
     try {
-      return { ok: true, path: store.backup() };
+      const file = store.backup();
+      const config = deviceConfig.load(dataDir());
+      const offsite = mirrorBackup({
+        file,
+        folder: config.backupFolder,
+        deviceName: config.deviceName,
+      });
+      return { ok: true, path: file, offsite };
     } catch (err) {
       return { ok: false, error: err.message };
     }
+  });
+
+  /**
+   * What is really in the off-site folder, read from the folder rather than
+   * remembered. A backup screen that reports its own last intention instead of
+   * what is on disk is how people find out too late.
+   */
+  ipcMain.handle("data:offsite", () => {
+    const config = deviceConfig.load(dataDir());
+    return mirrorStatus({ folder: config.backupFolder, deviceName: config.deviceName });
+  });
+
+  /** Opens the folder picker and returns what was chosen, or "" if cancelled. */
+  ipcMain.handle("data:choose-backup-folder", async () => {
+    const folder = await chooseFolder();
+    return { ok: true, folder };
   });
 
   ipcMain.handle("data:stats", () => {

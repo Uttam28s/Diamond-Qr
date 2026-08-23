@@ -19,6 +19,7 @@
     "smoke": "electron tools/smoke-test.js",
     "test:activation": "electron tools/activation-test.js",
     "test:journal": "electron tools/journal-growth-test.js",
+    "test:offsite": "electron tools/offsite-test.js",
     "verify:package": "node tools/verify-package.js",
     "recover:journal": "node tools/recover-journal.js",
     "check:backup": "node tools/check-backup.js",

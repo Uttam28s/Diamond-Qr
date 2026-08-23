@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld("diamondQR", {
     save: (state) => ipcRenderer.invoke("data:save", state),
     backup: () => ipcRenderer.invoke("data:backup"),
     stats: () => ipcRenderer.invoke("data:stats"),
+
+    /* --------------------------------------- the copy that is not on this PC */
+    offsite: () => ipcRenderer.invoke("data:offsite"),
+    chooseBackupFolder: () => ipcRenderer.invoke("data:choose-backup-folder"),
   },
 
   /* ------------------------------------------------------ host mode status */

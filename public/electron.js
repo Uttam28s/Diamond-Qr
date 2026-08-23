@@ -10,6 +10,7 @@ const codec = require("./license/codec");
 
 const deviceConfig = require("./db/config");
 const { createFileStore } = require("./db/fileStore");
+const { mirrorBackup } = require("./db/offsite");
 const { createServer } = require("./net/server");
 const { registerDataIpc } = require("./main/dataIpc");
 const { migrateUserData } = require("./main/migrateUserData");
@@ -233,9 +234,24 @@ async function openData() {
     return;
   }
 
-  // One dated copy per launch, before anything can be changed today.
+  // One dated copy per launch, before anything can be changed today - and then a
+  // copy of that somewhere off this PC, if the owner has set a folder. Neither
+  // may throw: a USB stick that is not plugged in cannot be allowed to stop the
+  // factory opening the app at seven in the morning.
   try {
-    dataStore.backup();
+    const file = dataStore.backup();
+    const mirrored = mirrorBackup({
+      file,
+      folder: config.backupFolder,
+      deviceName: config.deviceName,
+    });
+    if (mirrored.configured) {
+      console.log(
+        mirrored.ok
+          ? `[data] off-site copy written to ${mirrored.path}`
+          : `[data] off-site copy skipped: ${mirrored.error}`
+      );
+    }
   } catch (err) {
     console.warn("[data] backup failed:", err.message);
   }
@@ -286,6 +302,24 @@ registerDataIpc({
   relaunch: () => {
     app.relaunch();
     app.exit(0);
+  },
+  // Passed in rather than imported there, because dataIpc.js is deliberately
+  // free of Electron beyond the ipcMain it is handed - which is what lets the
+  // harness drive the real handlers.
+  chooseFolder: async () => {
+    const options = {
+      title: "Where should the backup copies go?",
+      buttonLabel: "Use this folder",
+      properties: ["openDirectory", "createDirectory"],
+    };
+    // Parented to the app window, or Windows is free to put it behind and the
+    // app looks frozen to whoever just clicked the button.
+    const { canceled, filePaths } =
+      mainWindow && !mainWindow.isDestroyed()
+        ? await dialog.showOpenDialog(mainWindow, options)
+        : await dialog.showOpenDialog(options);
+
+    return canceled || !filePaths.length ? "" : filePaths[0];
   },
 });
 

@@ -247,6 +247,21 @@ const Workspace = ({
   }, []);
 
   /**
+   * Aim the scanner at one lot straight from its row in the sheet.
+   *
+   * The picker still exists for finding a lot from anywhere, but when the row is
+   * already on screen and under the cursor, going through a dialog to re-type the
+   * number it is showing is the slow way round.
+   */
+  const scanIntoLot = useCallback(
+    (lotId) => {
+      persistActiveLot(lotId);
+      setActiveTab("scan");
+    },
+    [persistActiveLot]
+  );
+
+  /**
    * The unsaved scan session.
    *
    * `writeJson` returns false rather than throwing, and until now nothing looked.
@@ -735,6 +750,8 @@ const Workspace = ({
               onEdit={(kapan) => setKapanForm({ kapan })}
               onDelete={(kapan) => setDeleteTarget({ kapan, totals: openView.totals })}
               onScanInto={() => setPickerMode("scan")}
+              onScanLot={scanIntoLot}
+              activeLotId={activeLotId}
               onUndo={undo}
               readOnly={readOnly}
             />

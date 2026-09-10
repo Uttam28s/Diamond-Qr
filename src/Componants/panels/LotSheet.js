@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from "react";
-import { IconChevronDown, IconChevronRight, IconClose, IconPlus } from "../Icons";
+import { IconChevronDown, IconChevronRight, IconClose, IconPlus, IconScan } from "../Icons";
 import PacketMover from "./PacketMover";
 import { useSheetCursor } from "../../hooks/useSheetCursor";
 import { parseDateEntry, parseLotField } from "../../domain/entry";
@@ -120,6 +120,8 @@ const LotSheet = ({
   onConfirm,
   expandedLotId,
   onToggleLot,
+  onScanLot,
+  activeLotId = null,
   onUndo,
   readOnly = false,
 }) => {
@@ -303,6 +305,7 @@ const LotSheet = ({
         <table className="sheet-table">
           <thead>
             <tr>
+              <th className="stick-0" aria-label="Scan into lot" />
               {COLUMNS.map((column) => (
                 <th
                   key={column.key}
@@ -331,6 +334,32 @@ const LotSheet = ({
                       expanded ? "is-expanded" : ""
                     }`}
                   >
+                    {/*
+                      Scan straight into this lot. The lot is already under the
+                      cursor here, so aiming the scanner at it should not mean
+                      going through the picker and typing its number again.
+                    */}
+                    <td className="stick-0">
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          className={`lot-scan ${
+                            activeLotId === row.lot.id ? "is-active" : ""
+                          }`}
+                          onClick={() => onScanLot(row.lot.id)}
+                          title={
+                            activeLotId === row.lot.id
+                              ? `Already scanning into lot ${row.lot.lotNo} — go to the scan screen`
+                              : `Scan into lot ${row.lot.lotNo}`
+                          }
+                          aria-label={`Scan into lot ${row.lot.lotNo}`}
+                          aria-pressed={activeLotId === row.lot.id}
+                        >
+                          <IconScan size={14} />
+                        </button>
+                      )}
+                    </td>
+
                     {COLUMNS.map((column) => {
                       if (column.key === "lotNo") {
                         return (
@@ -390,7 +419,7 @@ const LotSheet = ({
 
                   {expanded && (
                     <tr className="packet-row">
-                      <td colSpan={COLUMNS.length + 1}>
+                      <td colSpan={COLUMNS.length + 2}>
                         <PacketMover
                           packets={row.packets}
                           lots={lotTargets(rows)}
@@ -414,6 +443,7 @@ const LotSheet = ({
             */}
             {!readOnly && (
               <tr className="ghost-row">
+                <td className="stick-0" />
                 <td className="num stick-1 lot-no">
                   <button
                     type="button"
@@ -469,7 +499,7 @@ const LotSheet = ({
 
             {!rows.length && (
               <tr className="empty-row">
-                <td colSpan={COLUMNS.length + 1}>
+                <td colSpan={COLUMNS.length + 2}>
                   <div className="empty-state">
                     <strong>No lots in this Kapan yet</strong>
                     <span>
@@ -486,6 +516,7 @@ const LotSheet = ({
           {!!rows.length && (
             <tfoot>
               <tr>
+                <th className="stick-0" />
                 <th className="stick-1">Σ</th>
                 <th className="stick-2">{rows.length} lots</th>
                 <th className="num">{formatInt(totals.roughPcs)}</th>

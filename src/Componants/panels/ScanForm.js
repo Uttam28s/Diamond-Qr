@@ -77,6 +77,18 @@ const ScanForm = ({
     />
 
     <div className="stat-grid">
+      {/*
+        The same count the session table carries in its header. It belongs up
+        here too: this is the figure someone checks against the tray of packets
+        in front of them, and they should not have to look away from the scan box
+        to read it.
+      */}
+      <StatCard
+        tone="slate"
+        icon={<IconScanTarget size={19} />}
+        label="Packets Scanned"
+        value={formatNumber(recordCount, 0)}
+      />
       <StatCard
         tone="blue"
         icon={<IconDroplet size={19} />}

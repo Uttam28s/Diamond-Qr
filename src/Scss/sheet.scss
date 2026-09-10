@@ -103,8 +103,9 @@
     border-bottom: 0;
   }
 
-  /* Sticky No. and Date. The sheet is 13 columns on purpose, so those two stay
-     put and the rest scrolls underneath. */
+  /* Sticky scan button, No. and Date. The sheet is 13 columns on purpose, so
+     those three stay put and the rest scrolls underneath. */
+  .stick-0,
   .stick-1,
   .stick-2 {
     position: sticky;
@@ -112,21 +113,29 @@
     background: $panel-bg;
   }
 
-  .stick-1 {
+  .stick-0 {
     left: 0;
+    width: 32px;
+    padding: 0;
+  }
+
+  .stick-1 {
+    left: 32px;
   }
 
   .stick-2 {
-    left: 52px;
+    left: 84px;
     box-shadow: 1px 0 0 $border;
   }
 
+  thead .stick-0,
   thead .stick-1,
   thead .stick-2 {
     z-index: 4;
     background: $head-bg;
   }
 
+  tfoot .stick-0,
   tfoot .stick-1,
   tfoot .stick-2 {
     z-index: 4;
@@ -153,13 +162,14 @@
     background: #eef3f4;
   }
 
+  tbody tr:hover .stick-0,
   tbody tr:hover .stick-1,
   tbody tr:hover .stick-2,
   tbody tr:hover .stick-end {
     background: #fbfefe;
   }
 
-  tr.has-warning .stick-1 {
+  tr.has-warning .stick-0 {
     box-shadow: inset 3px 0 0 $amber;
   }
 
@@ -230,6 +240,48 @@
   }
 }
 
+/**
+ * Scan into this lot, from the row itself.
+ *
+ * Sits outside the ક્રમ cell rather than inside it, so it cannot be hit by
+ * mistake while reaching for the expand chevron - the two do very different
+ * things. It stays quiet until the row is hovered, and the lot currently being
+ * scanned into keeps its button lit so the sheet says where the scanner is
+ * pointed without anyone having to leave the screen.
+ */
+.lot-scan {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 7px 0;
+  color: $muted-light;
+  cursor: pointer;
+
+  &:hover {
+    background: $teal;
+    color: #fff;
+  }
+
+  &:focus-visible {
+    outline: 0;
+    background: $teal-tint;
+    color: $teal-dark;
+    box-shadow: inset 0 0 0 2px $teal;
+  }
+
+  &.is-active {
+    background: $teal-tint;
+    color: $teal-dark;
+    box-shadow: inset 2px 0 0 $teal;
+
+    &:hover {
+      background: $teal;
+      color: #fff;
+    }
+  }
+}
+
 /* ---------------------------------------------------------------- ghost row */
 
 .sheet-table tr.ghost-row {
@@ -280,7 +332,7 @@
 /* -------------------------------------------------------------- packet rows */
 
 .sheet-table tr.packet-row > td {
-  padding: 10px 12px 12px 46px;
+  padding: 10px 12px 12px 78px;
   background: #f4f8f9;
   white-space: normal;
 }

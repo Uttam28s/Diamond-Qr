@@ -24,6 +24,8 @@ const KapanWorkbench = ({
   onEdit,
   onDelete,
   onScanInto,
+  onScanLot,
+  activeLotId,
   onUndo,
   readOnly,
 }) => {
@@ -130,6 +132,8 @@ const KapanWorkbench = ({
         onConfirm={onConfirm}
         expandedLotId={expandedLotId}
         onToggleLot={toggleLot}
+        onScanLot={onScanLot}
+        activeLotId={activeLotId}
         onUndo={onUndo}
         readOnly={readOnly}
       />

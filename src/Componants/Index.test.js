@@ -419,6 +419,66 @@ describe("choosing the lot to scan into", () => {
 
     expect(within(dialog).getByText(/Nothing matches that/i)).toBeInTheDocument();
   });
+
+  it("aims the scanner from the lot's own row, with no picker in the way", async () => {
+    await createKapan("41");
+    await addLot();
+    await addLot();
+    await waitFor(() => lotRow(2));
+
+    await userEvent.click(screen.getByLabelText("Scan into lot 2"));
+
+    // Straight onto the scan screen, pointed at that lot.
+    expect(await screen.findByText(/Kapan 41 · Lot 2/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Save to lot 2/i })).toBeInTheDocument();
+  });
+
+  it("marks the row the scanner is pointed at, and leaves the others alone", async () => {
+    await createKapan("41");
+    await addLot();
+    await addLot();
+    await waitFor(() => lotRow(2));
+
+    await userEvent.click(screen.getByLabelText("Scan into lot 2"));
+    await screen.findByText(/Kapan 41 · Lot 2/i);
+    await openKapansTab();
+
+    expect(await screen.findByLabelText("Scan into lot 2")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(screen.getByLabelText("Scan into lot 1")).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+  });
+});
+
+describe("the session count card", () => {
+  /** The Packets Scanned card, read as the owner reads it. */
+  const scannedCard = () =>
+    screen.getByText("Packets Scanned").closest(".stat-card");
+
+  it("counts up with the scans and back down when one is removed", async () => {
+    render(<Index />);
+    await goToScan();
+
+    expect(within(scannedCard()).getByText("0")).toBeInTheDocument();
+
+    await scan(2.0, 0.4);
+    await scan(3.0, 0.6);
+    await waitFor(() =>
+      expect(within(scannedCard()).getByText("2")).toBeInTheDocument()
+    );
+
+    // The same figure the session table has always carried in its header.
+    expect(screen.getByText("2 Records")).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByTitle("Remove this scan")[0]);
+    await waitFor(() =>
+      expect(within(scannedCard()).getByText("1")).toBeInTheDocument()
+    );
+  });
 });
 
 describe("saving a session into a lot", () => {

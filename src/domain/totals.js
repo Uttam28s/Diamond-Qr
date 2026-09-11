@@ -156,6 +156,10 @@ const emptyRollup = () => ({
   lotsAwaitingReturns: 0,
   missingPcsBase: 0,
   missingPcs: 0,
+  // The same two weights again, but only over lots whose returns are actually
+  // in - the base for જમા ઘટ ટકાવારી. See `finishRollup`.
+  jamaRoughWeight: 0,
+  jamaPolishedWeight: 0,
 });
 
 /** Adds one lot's derived figures into a running rollup. */
@@ -170,6 +174,8 @@ const addLot = (acc, derived) => {
 
   if (derived.hasReturns) {
     acc.lotsWithReturns += 1;
+    acc.jamaRoughWeight += derived.kachuWeight;
+    acc.jamaPolishedWeight += derived.polishedWeight;
     if (derived.missingPcs !== null) {
       acc.missingPcsBase += derived.pcs || 0;
       acc.missingPcs += derived.missingPcs;
@@ -193,6 +199,23 @@ const finishRollup = (acc) => {
 
   // તૈયાર ઘટ વજન
   const ghatWeight = polishedWeight - returnWeight;
+
+  /**
+   * જમા ઘટ - the ghat of the lots that have come back, and nothing else.
+   *
+   * તૈયાર ઘટ ટકાવારી above divides by every lot's rough weight, including the
+   * ones still out with the workers. On a 150-lot Kapan with 30 back that makes
+   * the loss look five times worse than it is, because the other 120 lots
+   * contribute their full polished weight to the numerator and have no return
+   * weight to subtract yet.
+   *
+   * This figure answers the question that is actually being asked while a Kapan
+   * is in progress: of the work that has come back, how much is short. The
+   * numerator uses `returnWeight` unchanged - a lot with no returns entered
+   * contributes nothing to it, so the two sides of the subtraction cover the
+   * same set of lots.
+   */
+  const jamaGhatWeight = acc.jamaPolishedWeight - returnWeight;
 
   return {
     lotCount: acc.lotCount,
@@ -220,6 +243,15 @@ const finishRollup = (acc) => {
 
     lotsWithReturns: acc.lotsWithReturns,
     lotsAwaitingReturns: acc.lotsAwaitingReturns,
+
+    // જમા વજન / જમા તૈયાર વજન - carried so the percentage below can be
+    // checked against the two weights it came from, and so a season rollup adds
+    // bases rather than averaging percentages.
+    jamaRoughWeight: acc.jamaRoughWeight,
+    jamaPolishedWeight: acc.jamaPolishedWeight,
+    jamaGhatWeight,
+    jamaGhatPct: percentOf(jamaGhatWeight, acc.jamaRoughWeight), // જમા ઘટ ટકાવારી
+
     missingPcs: acc.missingPcs,
     // Carried through so a season rollup can add bases rather than trying to
     // reconstruct one from a percentage.
@@ -285,6 +317,8 @@ export const rollupKapanTotals = (kapanTotalsList = []) => {
     running.lotsAwaitingReturns += totals.lotsAwaitingReturns;
     running.missingPcs += totals.missingPcs;
     running.missingPcsBase += totals.missingPcsBase;
+    running.jamaRoughWeight += totals.jamaRoughWeight;
+    running.jamaPolishedWeight += totals.jamaPolishedWeight;
     return running;
   }, emptyRollup());
 

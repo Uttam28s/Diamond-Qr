@@ -128,6 +128,8 @@ const aggregate = (rows) => {
     lotsAwaitingReturns: 0,
     missingPcs: 0,
     missingPcsBase: 0,
+    jamaRoughWeight: 0,
+    jamaPolishedWeight: 0,
   };
 
   rows.forEach(({ derived }) => {
@@ -139,6 +141,8 @@ const aggregate = (rows) => {
     acc.returnWeight += derived.returnWeight || 0;
     if (derived.hasReturns) {
       acc.lotsWithReturns += 1;
+      acc.jamaRoughWeight += derived.kachuWeight;
+      acc.jamaPolishedWeight += derived.polishedWeight;
       if (derived.missingPcs !== null) {
         acc.missingPcs += derived.missingPcs;
         acc.missingPcsBase += derived.pcs || 0;
@@ -149,6 +153,10 @@ const aggregate = (rows) => {
   });
 
   const ghatWeight = acc.polishedWeight - acc.returnWeight;
+  // જમા ઘટ: the ghat of the lots that have come back, over their rough weight
+  // alone. Same definition as `finishRollup` in totals.js - the two rollups are
+  // separate code and must not drift.
+  const jamaGhatWeight = acc.jamaPolishedWeight - acc.returnWeight;
 
   return {
     ...acc,
@@ -160,6 +168,8 @@ const aggregate = (rows) => {
     roughSize: acc.roughWeight > 0 ? acc.roughPcs / acc.roughWeight : 0,
     returnSize: acc.returnWeight > 0 ? acc.returnPcs / acc.returnWeight : 0,
     missingPct: percentOf(acc.missingPcs, acc.missingPcsBase),
+    jamaGhatWeight,
+    jamaGhatPct: percentOf(jamaGhatWeight, acc.jamaRoughWeight),
   };
 };
 

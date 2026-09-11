@@ -293,7 +293,7 @@ the firewall gets in the way: **[INSTALL.md](INSTALL.md)**.
 ```bash
 npm install
 npm run electron-dev     # the UI on :3001 plus the desktop shell
-npm test                 # 480 tests
+npm test                 # 491 tests
 npm run build            # production build, then hardened (see below)
 npm run smoke            # loads the built bundle in a real window and checks it
 npm run test:activation  # boots the real main process and activates a fresh PC

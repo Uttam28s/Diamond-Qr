@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import KapanHeaderStats from "./KapanHeaderStats";
+import JamaProgress from "./JamaProgress";
 import LotSheet from "./LotSheet";
 import UnassignedTray from "./UnassignedTray";
 import { IconArrowLeft, IconEdit, IconLayers, IconScan, IconTrash } from "../Icons";
@@ -113,6 +114,8 @@ const KapanWorkbench = ({
       </header>
 
       <KapanHeaderStats totals={totals} />
+
+      <JamaProgress totals={totals} />
 
       <UnassignedTray
         packets={unassigned}

@@ -1,7 +1,7 @@
 {
   "name": "diamond-qr",
   "homepage": "./",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "//productName": "Top level, not just under build: Electron reads this for app.getName(), which is what names %APPDATA%\\Diamond QR. electron-builder strips its own build.productName from the packaged package.json, so putting it only there would leave the data folder named after `name` instead - and differently in dev than in production.",
   "productName": "Diamond QR",
   "description": "Diamond QR - offline packet scanning, lot sheets and Kapan records",

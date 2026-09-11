@@ -454,6 +454,90 @@ describe("choosing the lot to scan into", () => {
   });
 });
 
+describe("જમા ઘટ in the Kapan header", () => {
+  /** Types a value into one of a lot's cells and commits it with Tab. */
+  const setCell = async (lotNo, label, value) => {
+    const cell = within(lotRow(lotNo)).getByLabelText(`Lot ${lotNo} ${label}`);
+    await userEvent.clear(cell);
+    await userEvent.type(cell, `${value}`);
+    await userEvent.tab();
+  };
+
+  /** The જમા block's figures, read by their Gujarati labels. */
+  const jamaFigure = (guj) => screen.getByText(guj).closest(".kstat");
+
+  it("says nothing is worked out yet before any returns are in", async () => {
+    await createKapan("41");
+    await addLot();
+    await waitFor(() => lotRow(1));
+
+    expect(await screen.findByText(/No returns entered yet/i)).toBeInTheDocument();
+    // The block still says how far along the Kapan is: none of its one lot.
+    expect(screen.getByText("0 of 1")).toBeInTheDocument();
+    expect(screen.getByText(/1 lot still out/i)).toBeInTheDocument();
+  });
+
+  it("divides by the returned lots only, not by every lot in the Kapan", async () => {
+    await createKapan("41");
+    await addLot();
+    await addLot();
+    await waitFor(() => lotRow(2));
+
+    /**
+     * Ten carats into one lot, using the row's own scan button.
+     *
+     * The wait on the active-lot bar is not decoration: without it the scan is
+     * typed while the screen is still switching, and the burst can land before
+     * the target has settled.
+     */
+    const scanInto = async (lotNo, kachu, polished) => {
+      // The nav item by its exact name: /Kapans/i also matches the workbench's
+      // own "All Kapans" button, so it is ambiguous from inside the sheet.
+      await userEvent.click(screen.getByRole("button", { name: /^Kapans$/i }));
+      await waitFor(() => lotRow(lotNo));
+      await userEvent.click(screen.getByLabelText(`Scan into lot ${lotNo}`));
+      await screen.findByText(new RegExp(`Kapan 41 · Lot ${lotNo}`, "i"));
+      await scan(kachu, polished);
+      await userEvent.click(
+        screen.getByRole("button", { name: new RegExp(`Save to lot ${lotNo}`, "i") })
+      );
+      await waitFor(() => expect(screen.getByText("0 Records")).toBeInTheDocument());
+    };
+
+    // Both lots carry identical weights. Only lot 1's returns come in, so if
+    // lot 2 reached the जमा divisor the percentage would halve.
+    await scanInto(1, 10.0, 2.0);
+    await scanInto(2, 10.0, 2.0);
+
+    await userEvent.click(screen.getByRole("button", { name: /^Kapans$/i }));
+    await waitFor(() => lotRow(1));
+    await setCell(1, "return pcs", 1);
+    await setCell(1, "return weight", 1.5);
+
+    await waitFor(() => expect(screen.getByText("1 of 2")).toBeInTheDocument());
+
+
+    // जमा ઘટ is lot 1 alone: 2.000 polished less 1.500 back = 0.500 of its
+    // 10.000 rough = 5.00%.
+    expect(within(jamaFigure("જમા કા.વજન")).getByText("10.000")).toBeInTheDocument();
+    expect(within(jamaFigure("જમા ઘટ વજન")).getByText("0.500")).toBeInTheDocument();
+    expect(within(jamaFigure("જમા ઘટ ટકાવારી")).getByText("5.00")).toBeInTheDocument();
+
+    /**
+     * And the workbook's own તૈયાર ઘટ ટકાવારી reads higher, because lot 2
+     * puts its full polished weight into that numerator with no return weight
+     * to subtract yet. That gap is the whole reason this block exists: 4.000
+     * polished less 1.500 back over 20.000 rough is 12.50%, two and a half
+     * times the real shortfall on the work that has actually come back.
+     */
+    expect(
+      within(screen.getByText("તૈયાર ઘટ ટકાવારી").closest(".kstat")).getByText("12.50")
+    ).toBeInTheDocument();
+
+    expect(screen.getByText(/1 lot still out/i)).toBeInTheDocument();
+  });
+});
+
 describe("the session count card", () => {
   /** The Packets Scanned card, read as the owner reads it. */
   const scannedCard = () =>

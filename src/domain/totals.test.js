@@ -199,6 +199,72 @@ describe("missing pcs vs outstanding pcs", () => {
 });
 
 /* ========================================================================
+   જમા ઘટ ટકાવારી - the ghat of the lots that have come back, and only those.
+   Same reasoning as missing pcs above: a lot still out with the workers is
+   not a loss, and letting it into the divisor makes one look like one.
+   ======================================================================== */
+
+describe("જમા ઘટ - ghat over the returned lots only", () => {
+  const totals = kapanTotals(lots, packetsByLot, []);
+
+  it("counts only the lots whose returns are in", () => {
+    // The same 11 rows of the fixture that carry return data.
+    expect(totals.lotsWithReturns).toBe(11);
+    expect(totals.lotsAwaitingReturns).toBe(17);
+    expect(round(totals.jamaRoughWeight, 3)).toBe(107.036);
+    expect(round(totals.jamaPolishedWeight, 3)).toBe(14.487);
+  });
+
+  it("is those lots' polished weight less what came back", () => {
+    expect(round(totals.jamaGhatWeight, 3)).toBe(0.897);
+    expect(round(totals.jamaGhatPct, 2)).toBe(0.84);
+  });
+
+  /**
+   * The whole point of the figure. With 11 of 28 lots back, તૈયાર ઘટ ટકાવારી
+   * reads 12.03% because the 17 lots still out put their full polished weight
+   * into the numerator with no return weight to subtract. The real shortfall on
+   * the work that has actually come back is 0.84%.
+   */
+  it("is not the whole-Kapan ઘટ, which a Kapan in progress overstates", () => {
+    expect(round(totals.ghatPct, 2)).toBe(12.03);
+    expect(totals.jamaGhatPct).toBeLessThan(totals.ghatPct);
+  });
+
+  it("stays at zero rather than dividing by nothing when no returns are in", () => {
+    const fresh = kapanTotals(
+      [{ id: "l1", lotNo: 1, pcs: 500, returnPcs: null, returnWeight: null }],
+      { l1: [{ kachuWeight: 30, polishedWeight: 5 }] },
+      []
+    );
+    expect(fresh.lotsWithReturns).toBe(0);
+    expect(fresh.jamaRoughWeight).toBe(0);
+    expect(fresh.jamaGhatWeight).toBe(0);
+    expect(fresh.jamaGhatPct).toBe(0);
+  });
+
+  it("equals the whole-Kapan ઘટ once every lot is back", () => {
+    const settled = lots.map((lot) => ({
+      ...lot,
+      returnPcs: lot.returnPcs === null ? 0 : lot.returnPcs,
+      returnWeight: lot.returnWeight === null ? 0 : lot.returnWeight,
+    }));
+    const after = kapanTotals(settled, packetsByLot, []);
+
+    expect(after.lotsAwaitingReturns).toBe(0);
+    expect(round(after.jamaGhatPct, 4)).toBe(round(after.ghatPct, 4));
+  });
+
+  it("a season rollup adds the bases rather than averaging the percentages", () => {
+    const season = rollupKapanTotals([totals, totals]);
+
+    expect(round(season.jamaRoughWeight, 3)).toBe(round(totals.jamaRoughWeight * 2, 3));
+    // Doubling everything cannot change a ratio.
+    expect(round(season.jamaGhatPct, 4)).toBe(round(totals.jamaGhatPct, 4));
+  });
+});
+
+/* ========================================================================
    Yield by sieve - the pattern in the factory's own data.
    ======================================================================== */
 
